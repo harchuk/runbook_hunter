@@ -1,0 +1,17 @@
+name: Demo Latency p95 spike (local)
+description: Local latency runbook with successful read-only network checks.
+match:
+  alertname: DemoLatencyP95Spike
+steps:
+  - name: API TCP check
+    tool: tcp_check
+    args:
+      address: api:8080
+  - name: Metrics scrape probe
+    tool: http_get
+    args:
+      url: http://api:8080/metrics
+  - name: API health JSON
+    tool: fetch_json
+    args:
+      url: http://api:8080/healthz

@@ -8,29 +8,35 @@ export default function ResetOverridesButton({ onReset }: { onReset: () => Promi
   const resetAll = async () => {
     await resetOverrides('all');
     await onReset();
-    setMessage('All overrides reset');
+    setMessage('All overrides reset to ConfigMap/defaults.');
   };
 
   const resetKeys = async () => {
     const list = keys.split(',').map((v) => v.trim()).filter(Boolean);
     await resetOverrides('keys', list);
     await onReset();
-    setMessage('Selected keys reset');
+    setMessage('Selected override keys reset.');
   };
 
   return (
-    <div>
-      <h4>Reset overrides</h4>
-      <button onClick={resetAll}>Reset all</button>
-      <div>
+    <div className="row" style={{ marginTop: 10 }}>
+      <h4 style={{ margin: 0 }}>Reset overrides</h4>
+      <div className="button-row">
+        <button className="btn danger" onClick={resetAll}>Reset all</button>
+      </div>
+      <label className="label">
+        Reset specific keys
         <input
+          className="input"
           placeholder="routing.rules,destinations.telegram"
           value={keys}
           onChange={(e) => setKeys(e.target.value)}
         />
-        <button onClick={resetKeys}>Reset keys</button>
+      </label>
+      <div className="button-row">
+        <button className="btn" onClick={resetKeys}>Reset selected keys</button>
       </div>
-      {message && <p>{message}</p>}
+      {message && <p className="hint">{message}</p>}
     </div>
   );
 }

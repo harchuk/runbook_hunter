@@ -18,6 +18,8 @@ security:
   egressAllowlist:
     - localhost
     - 127.0.0.1
+    - api
+    - postgres
     - '*.svc.cluster.local'
   requestTimeout: 5s
   retryCount: 2

@@ -136,7 +136,7 @@ func BuiltInDefaults() Config {
 			Mode: "basic",
 		},
 		Security: SecurityConfig{
-			EgressAllowlist:      []string{"localhost", "127.0.0.1", "*.svc.cluster.local"},
+			EgressAllowlist:      []string{"localhost", "127.0.0.1", "api", "postgres", "*.svc.cluster.local"},
 			RequestTimeout:       5 * time.Second,
 			RetryCount:           2,
 			CircuitBreakerFails:  3,

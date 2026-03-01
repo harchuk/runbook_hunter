@@ -20,6 +20,8 @@ spec:
           imagePullPolicy: {{ .Values.uiImage.pullPolicy }}
           env:
             - name: NEXT_PUBLIC_API_BASE
-              value: ""
+              value: {{ .Values.ui.apiBase | quote }}
+            - name: API_INTERNAL_BASE
+              value: {{ default (printf "http://%s-api:%v" (include "runbook-hunter.fullname" .) .Values.api.service.port) .Values.ui.apiInternalBase | quote }}
           ports:
             - containerPort: 3000

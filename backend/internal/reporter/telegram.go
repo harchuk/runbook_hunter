@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -36,18 +37,24 @@ func NewTelegramReporter(timeout time.Duration) *TelegramReporter {
 }
 
 func FormatTelegramMessage(data MessageData) string {
-	return fmt.Sprintf(
-		"🚨 [%s] %s\nService: %s | Env: %s\nIncident: #%d | Status: %s\nSummary: %s\nRunbook: %s\nUpdated: %s",
-		strings.ToUpper(data.Severity),
-		data.AlertName,
-		data.Service,
-		data.Env,
-		data.IncidentID,
-		data.Status,
-		data.Brief,
-		data.RunbookName,
-		data.UpdatedAt.UTC().Format(time.RFC3339),
-	)
+	severity := strings.ToUpper(nonEmpty(data.Severity, "unknown"))
+	status := strings.ToUpper(nonEmpty(data.Status, "open"))
+	findings := summarizeBrief(data.Brief, 5)
+	updatedAt := data.UpdatedAt.UTC().Format("2006-01-02 15:04:05 MST")
+
+	parts := []string{
+		fmt.Sprintf("%s Runbook Hunter", severityIcon(severity)),
+		fmt.Sprintf("%s %s  |  %s %s", severityIcon(severity), severity, statusIcon(status), status),
+		fmt.Sprintf("Alert: %s", nonEmpty(data.AlertName, "n/a")),
+		fmt.Sprintf("Scope: service=%s env=%s", nonEmpty(data.Service, "n/a"), nonEmpty(data.Env, "n/a")),
+		fmt.Sprintf("Incident: #%d", data.IncidentID),
+		fmt.Sprintf("Runbook: %s", nonEmpty(data.RunbookName, "n/a")),
+		"Findings:",
+		findings,
+		fmt.Sprintf("Updated: %s", updatedAt),
+		"Mode: read-only diagnostics",
+	}
+	return strings.Join(parts, "\n")
 }
 
 type telegramRequest struct {
@@ -76,17 +83,85 @@ func (r *TelegramReporter) Send(ctx context.Context, destination config.Telegram
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", destination.BotToken)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("telegram request creation failed")
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := r.Client.Do(req)
 	if err != nil {
-		return err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("telegram request timed out")
+		}
+		return fmt.Errorf("telegram request failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("telegram send failed with status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func nonEmpty(value, fallback string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+	return trimmed
+}
+
+func severityIcon(severity string) string {
+	switch strings.ToLower(strings.TrimSpace(severity)) {
+	case "critical":
+		return "🚨"
+	case "warning":
+		return "⚠️"
+	case "info":
+		return "ℹ️"
+	default:
+		return "🛰️"
+	}
+}
+
+func statusIcon(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "resolved":
+		return "✅"
+	case "open", "firing":
+		return "🟠"
+	default:
+		return "🔎"
+	}
+}
+
+func summarizeBrief(brief string, maxLines int) string {
+	brief = strings.TrimSpace(brief)
+	if brief == "" {
+		return "- no facts yet"
+	}
+	chunks := strings.Split(brief, ";")
+	lines := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		chunk = strings.TrimSpace(chunk)
+		if chunk == "" {
+			continue
+		}
+		if len(chunk) > 180 {
+			chunk = chunk[:177] + "..."
+		}
+		lines = append(lines, "- "+chunk)
+		if len(lines) >= maxLines {
+			break
+		}
+	}
+	if len(lines) == 0 {
+		cut := brief
+		if len(cut) > 180 {
+			cut = cut[:177] + "..."
+		}
+		return "- " + cut
+	}
+	if len(chunks) > len(lines) {
+		lines = append(lines, fmt.Sprintf("- ... and %d more facts", len(chunks)-len(lines)))
+	}
+	return strings.Join(lines, "\n")
 }

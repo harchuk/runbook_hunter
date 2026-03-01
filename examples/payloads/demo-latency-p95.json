@@ -1,0 +1,32 @@
+{
+  "version": "4",
+  "groupKey": "{}:{alertname=\"DemoLatencyP95Spike\"}",
+  "status": "firing",
+  "receiver": "runbook-hunter",
+  "groupLabels": {
+    "alertname": "DemoLatencyP95Spike"
+  },
+  "commonLabels": {
+    "alertname": "DemoLatencyP95Spike",
+    "service": "api",
+    "env": "local",
+    "severity": "warning"
+  },
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "DemoLatencyP95Spike",
+        "service": "api",
+        "env": "local",
+        "severity": "warning",
+        "instance": "demo-latency-1"
+      },
+      "annotations": {
+        "summary": "Demo API latency p95 above threshold"
+      },
+      "startsAt": "2026-03-01T00:00:00Z",
+      "generatorURL": "http://prometheus.local/graph?g0.expr=demo_api_latency_p95"
+    }
+  ]
+}

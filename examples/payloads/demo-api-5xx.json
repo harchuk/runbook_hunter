@@ -1,0 +1,32 @@
+{
+  "version": "4",
+  "groupKey": "{}:{alertname=\"DemoAPI5xxSpike\"}",
+  "status": "firing",
+  "receiver": "runbook-hunter",
+  "groupLabels": {
+    "alertname": "DemoAPI5xxSpike"
+  },
+  "commonLabels": {
+    "alertname": "DemoAPI5xxSpike",
+    "service": "api",
+    "env": "local",
+    "severity": "critical"
+  },
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "DemoAPI5xxSpike",
+        "service": "api",
+        "env": "local",
+        "severity": "critical",
+        "instance": "demo-api-1"
+      },
+      "annotations": {
+        "summary": "Demo API 5xx above threshold"
+      },
+      "startsAt": "2026-03-01T00:00:00Z",
+      "generatorURL": "http://prometheus.local/graph?g0.expr=demo_api_5xx"
+    }
+  ]
+}

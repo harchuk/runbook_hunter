@@ -1,0 +1,32 @@
+{
+  "version": "4",
+  "groupKey": "{}:{alertname=\"DemoDBPoolExhausted\"}",
+  "status": "firing",
+  "receiver": "runbook-hunter",
+  "groupLabels": {
+    "alertname": "DemoDBPoolExhausted"
+  },
+  "commonLabels": {
+    "alertname": "DemoDBPoolExhausted",
+    "service": "api",
+    "env": "local",
+    "severity": "critical"
+  },
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "DemoDBPoolExhausted",
+        "service": "api",
+        "env": "local",
+        "severity": "critical",
+        "instance": "demo-db-1"
+      },
+      "annotations": {
+        "summary": "Demo DB pool exhausted"
+      },
+      "startsAt": "2026-03-01T00:00:00Z",
+      "generatorURL": "http://prometheus.local/graph?g0.expr=demo_db_pool_exhausted"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -54,12 +55,15 @@ func (r *MattermostReporter) Send(ctx context.Context, destination config.Matter
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, destination.WebhookURL, bytes.NewBuffer(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("mattermost request creation failed")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := r.Client.Do(req)
 	if err != nil {
-		return err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("mattermost request timed out")
+		}
+		return fmt.Errorf("mattermost request failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {

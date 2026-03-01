@@ -20,6 +20,8 @@ worker:
 
 ui:
   replicaCount: 1
+  apiBase: ""
+  apiInternalBase: ""
   service:
     type: ClusterIP
     port: 80

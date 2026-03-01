@@ -72,6 +72,20 @@ Endpoints:
 - API: [http://localhost:8080](http://localhost:8080)
 - UI: [http://localhost:3000](http://localhost:3000)
 
+Generate demo incidents (3 alert types) from CLI:
+```bash
+./examples/local/generate-incidents.sh
+```
+
+Or from UI:
+- Open **Incidents** tab
+- Click **Generate demo incidents**
+- Then open incident details to see successful read-only step runs
+
+Security notes:
+- Demo generation uses the same `POST /api/alertmanager` ingest path (no privileged bypass).
+- Demo runbooks execute read-only tools only (`http_get`, `dns_lookup`, `tcp_check`, `fetch_json`).
+
 ## Helm Install
 ```bash
 helm install runbook-hunter ./deploy/helm/runbook-hunter -f examples/k8s/values-minimal.yaml

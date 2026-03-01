@@ -1,0 +1,16 @@
+# Go binaries
+backend/runbook-hunter
+
+# Node modules
+frontend/node_modules
+landing/node_modules
+
+# Next build outputs
+frontend/.next
+landing/.next
+
+# Logs and artifacts
+*.log
+output/
+.playwright-cli/
+.vercel

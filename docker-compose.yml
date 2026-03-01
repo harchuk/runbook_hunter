@@ -1,4 +1,3 @@
-version: '3.9'
 services:
   postgres:
     image: postgres:16
@@ -10,6 +9,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d runbook_hunter"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   api:
     build:
@@ -26,13 +30,14 @@ services:
       - ./examples/local/config.yaml:/app/config/config.yaml:ro
       - ./runbooks:/runbooks:ro
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["--mode=worker", "--config=/app/config/config.yaml"]
+    command: ["--mode=worker", "--config=/app/config/config.yaml", "--run-migrations=false"]
     environment:
       RH_AUTH_BASIC_USER: admin
       RH_AUTH_BASIC_PASS: change-me
@@ -41,7 +46,10 @@ services:
       - ./examples/local/config.yaml:/app/config/config.yaml:ro
       - ./runbooks:/runbooks:ro
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
 
   ui:
     build:
@@ -50,7 +58,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE: http://localhost:8080
+      API_INTERNAL_BASE: http://api:8080
+      NEXT_PUBLIC_API_BASE: ""
 
 volumes:
   pgdata:

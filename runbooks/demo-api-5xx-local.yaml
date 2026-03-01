@@ -1,0 +1,17 @@
+name: Demo API 5xx spike (local)
+description: Local docker-compose demo runbook with reachable read-only checks.
+match:
+  alertname: DemoAPI5xxSpike
+steps:
+  - name: API health endpoint
+    tool: http_get
+    args:
+      url: http://api:8080/healthz
+  - name: API readiness JSON
+    tool: fetch_json
+    args:
+      url: http://api:8080/readyz
+  - name: API DNS resolution
+    tool: dns_lookup
+    args:
+      host: api

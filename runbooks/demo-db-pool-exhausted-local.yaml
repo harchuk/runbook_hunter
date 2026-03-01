@@ -1,0 +1,17 @@
+name: Demo DB pool exhausted (local)
+description: Local DB diagnostics runbook using postgres service from docker-compose.
+match:
+  alertname: DemoDBPoolExhausted
+steps:
+  - name: Postgres DNS
+    tool: dns_lookup
+    args:
+      host: postgres
+  - name: Postgres TCP connectivity
+    tool: tcp_check
+    args:
+      address: postgres:5432
+  - name: API readiness JSON
+    tool: fetch_json
+    args:
+      url: http://api:8080/readyz

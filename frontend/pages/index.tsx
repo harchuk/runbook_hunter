@@ -3,24 +3,69 @@ import AuthPanel from '../components/AuthPanel';
 import IncidentsTab from '../components/IncidentsTab';
 import SettingsTab from '../components/SettingsTab';
 import PostUpdateDialog from '../components/PostUpdateDialog';
+import ThemeToggle from '../components/ThemeToggle';
 import { fetchIncidents } from '../lib/api';
 
 type Tab = 'incidents' | 'settings' | 'post';
 
 export default function Home() {
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [tab, setTab] = useState<Tab>('incidents');
-  const [incidentCount, setIncidentCount] = useState<number>(0);
+  const [incidentCount, setIncidentCount] = useState(0);
+  const [incidentOpenCount, setIncidentOpenCount] = useState(0);
+  const [incidentCriticalCount, setIncidentCriticalCount] = useState(0);
   const [authVersion, setAuthVersion] = useState(0);
 
   useEffect(() => {
-    fetchIncidents().then((items) => setIncidentCount(items.length)).catch(() => setIncidentCount(0));
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const saved = window.localStorage.getItem('rh_theme');
+    const next = saved === 'light' ? 'light' : 'dark';
+    setTheme(next);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('rh_theme', theme);
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    fetchIncidents()
+      .then((items) => {
+        const rows = items as any[];
+        const open = rows.filter((item) => (item.status ?? item.Status ?? 'open') === 'open').length;
+        const critical = rows.filter((item) => (item.severity ?? item.Severity ?? '') === 'critical').length;
+        setIncidentCount(rows.length);
+        setIncidentOpenCount(open);
+        setIncidentCriticalCount(critical);
+      })
+      .catch(() => {
+        setIncidentCount(0);
+        setIncidentOpenCount(0);
+        setIncidentCriticalCount(0);
+      });
   }, [tab, authVersion]);
 
   return (
-    <main>
+    <main className="console-page">
+      <header className="topbar">
+        <div className="brand-wrap">
+          <a className="brand" href="/">Runbook Hunter</a>
+          <span className="hint">Admin Console</span>
+        </div>
+        <div className="topbar-controls">
+          <ThemeToggle theme={theme} onToggle={() => setTheme((v) => (v === 'dark' ? 'light' : 'dark'))} />
+        </div>
+      </header>
+
       <section className="hero">
         <p className="eyebrow">Runbook Hunter Console</p>
-        <h1>Incident hunting, but with signal over noise.</h1>
+        <h1>Operate incidents with signal, speed, and confidence.</h1>
         <p className="subtitle">
           Always-on correlation, read-only diagnostics, and deduplicated Telegram/Mattermost updates.
           Tune everything from config and safely override through UI.
@@ -31,16 +76,20 @@ export default function Home() {
         </p>
         <div className="stats">
           <article className="stat">
-            <span className="hint">Open + historical incidents</span>
+            <span className="hint">Total incidents</span>
             <strong>{incidentCount}</strong>
+          </article>
+          <article className="stat">
+            <span className="hint">Open incidents</span>
+            <strong>{incidentOpenCount}</strong>
+          </article>
+          <article className="stat">
+            <span className="hint">Critical severity</span>
+            <strong>{incidentCriticalCount}</strong>
           </article>
           <article className="stat">
             <span className="hint">Config precedence</span>
             <strong>UI &gt; ConfigMap &gt; Defaults</strong>
-          </article>
-          <article className="stat">
-            <span className="hint">Worker mode</span>
-            <strong>Always-on loop</strong>
           </article>
         </div>
       </section>

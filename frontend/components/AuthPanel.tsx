@@ -41,9 +41,14 @@ export default function AuthPanel({ onAuthChanged }: Props) {
 
   return (
     <section className="panel auth-panel">
-      <div className="incident-head" style={{ marginBottom: 10 }}>
-        <h2 style={{ margin: 0 }}>API Access</h2>
-        <span className="hint">Security notes: credentials are kept in `sessionStorage` only.</span>
+      <div className="section-head" style={{ marginBottom: 10 }}>
+        <div>
+          <h2 style={{ margin: 0 }}>API Access</h2>
+          <p className="hint" style={{ margin: '6px 0 0' }}>
+            Security notes: credentials are kept in `sessionStorage` only.
+          </p>
+        </div>
+        <span className="mini-pill">Current mode: {mode}</span>
       </div>
       <form className="row" onSubmit={onSave}>
         <label className="label">

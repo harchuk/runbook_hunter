@@ -13,6 +13,10 @@ export default function ResetOverridesButton({ onReset }: { onReset: () => Promi
 
   const resetKeys = async () => {
     const list = keys.split(',').map((v) => v.trim()).filter(Boolean);
+    if (list.length === 0) {
+      setMessage('Enter at least one key path.');
+      return;
+    }
     await resetOverrides('keys', list);
     await onReset();
     setMessage('Selected override keys reset.');
@@ -21,6 +25,9 @@ export default function ResetOverridesButton({ onReset }: { onReset: () => Promi
   return (
     <div className="row" style={{ marginTop: 10 }}>
       <h4 style={{ margin: 0 }}>Reset overrides</h4>
+      <p className="hint" style={{ margin: 0 }}>
+        Use reset to roll back UI-level settings to ConfigMap/default values.
+      </p>
       <div className="button-row">
         <button className="btn danger" onClick={resetAll}>Reset all</button>
       </div>

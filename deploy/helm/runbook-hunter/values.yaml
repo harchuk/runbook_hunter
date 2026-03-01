@@ -1,0 +1,96 @@
+image:
+  repository: ghcr.io/example/runbook-hunter-backend
+  tag: latest
+  pullPolicy: IfNotPresent
+
+uiImage:
+  repository: ghcr.io/example/runbook-hunter-ui
+  tag: latest
+  pullPolicy: IfNotPresent
+
+api:
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+worker:
+  replicaCount: 1
+
+ui:
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: runbook-hunter.local
+  annotations: {}
+
+auth:
+  mode: basic
+  basicUser: admin
+  basicPass: change-me
+  jwtSecret: change-me
+
+secrets:
+  settingsCryptoKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+config:
+  server:
+    addr: ":8080"
+    readTimeout: 10s
+    writeTimeout: 30s
+  worker:
+    interval: 30s
+    batchSize: 20
+    maxConcurrency: 4
+  database:
+    driver: postgres
+    dsn: postgres://postgres:postgres@postgres.default.svc.cluster.local:5432/runbook_hunter?sslmode=disable
+  auth:
+    mode: basic
+    basicUser: admin
+    basicPass: change-me
+    jwtSecret: change-me
+  security:
+    egressAllowlist:
+      - localhost
+      - 127.0.0.1
+      - '*.svc.cluster.local'
+    requestTimeout: 5s
+    retryCount: 2
+    circuitBreakerFails: 3
+    circuitBreakerWindow: 1m
+    settingsCryptoKeyB64: ""
+  runbooks:
+    mode: file
+    path: /runbooks
+  fingerprint:
+    fields:
+      - alertname
+      - service
+      - env
+      - instance|job
+  limits:
+    stepTimeout: 5s
+    dedupCooldown: 5m
+    maxSteps: 3
+  sources:
+    alertmanager:
+      - name: default
+        receiver: default
+        enabled: true
+  destinations:
+    telegram: []
+    mattermost: []
+  routing:
+    rules: []
+
+serviceAccount:
+  create: true
+  name: ""

@@ -1,0 +1,17 @@
+name: API 5xx spike
+description: Investigate sharp increase in 5xx responses from API service.
+match:
+  alertname: API5xxSpike
+steps:
+  - name: API health endpoint
+    tool: http_get
+    args:
+      url: http://api.default.svc.cluster.local/healthz
+  - name: DNS check for API service
+    tool: dns_lookup
+    args:
+      host: api.default.svc.cluster.local
+  - name: Metrics snapshot
+    tool: fetch_json
+    args:
+      url: http://api.default.svc.cluster.local/metrics

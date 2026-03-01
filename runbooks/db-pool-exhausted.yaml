@@ -1,0 +1,17 @@
+name: DB pool exhausted
+description: Check DB service and application DB-related status.
+match:
+  alertname: DBPoolExhausted
+steps:
+  - name: DB service DNS
+    tool: dns_lookup
+    args:
+      host: postgres.default.svc.cluster.local
+  - name: DB TCP connectivity
+    tool: tcp_check
+    args:
+      address: postgres.default.svc.cluster.local:5432
+  - name: App DB diagnostics
+    tool: fetch_json
+    args:
+      url: http://api.default.svc.cluster.local/debug/db

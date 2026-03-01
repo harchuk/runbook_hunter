@@ -1,0 +1,2 @@
+ALTER TABLE settings_overrides
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();

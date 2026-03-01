@@ -1,0 +1,17 @@
+name: Latency p95 spike
+description: Validate latency spike and upstream dependencies.
+match:
+  alertname: LatencyP95Spike
+steps:
+  - name: Ping gateway
+    tool: tcp_check
+    args:
+      address: gateway.default.svc.cluster.local:80
+  - name: Probe API readiness
+    tool: http_get
+    args:
+      url: http://api.default.svc.cluster.local/readyz
+  - name: Fetch latency debug endpoint
+    tool: fetch_json
+    args:
+      url: http://api.default.svc.cluster.local/debug/latency

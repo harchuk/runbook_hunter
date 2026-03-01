@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "runbook-hunter.fullname" . }}-api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "runbook-hunter.name" . }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "runbook-hunter.name" . }}
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: {{ include "runbook-hunter.serviceAccountName" . }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--mode=api", "--config=/app/config/config.yaml"]
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: {{ include "runbook-hunter.fullname" . }}-secret
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+            - name: runbooks
+              mountPath: /runbooks
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "runbook-hunter.fullname" . }}-config
+        - name: runbooks
+          configMap:
+            name: {{ include "runbook-hunter.fullname" . }}-runbooks

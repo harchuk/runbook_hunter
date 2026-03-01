@@ -1,0 +1,79 @@
+api:
+  replicaCount: 2
+worker:
+  replicaCount: 2
+ui:
+  replicaCount: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  host: runbook-hunter.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+
+auth:
+  mode: basic
+  basicUser: admin
+  basicPass: "__REPLACE_ME__"
+
+secrets:
+  settingsCryptoKey: "__BASE64_32BYTE_KEY__"
+
+config:
+  server:
+    addr: ":8080"
+    readTimeout: 10s
+    writeTimeout: 30s
+  worker:
+    interval: 20s
+    batchSize: 40
+    maxConcurrency: 8
+  database:
+    driver: postgres
+    dsn: "__POSTGRES_DSN__"
+  auth:
+    mode: basic
+    basicUser: admin
+    basicPass: "__REPLACE_ME__"
+  security:
+    egressAllowlist:
+      - '*.svc.cluster.local'
+      - internal-api.example.com
+    requestTimeout: 5s
+    retryCount: 2
+    circuitBreakerFails: 5
+    circuitBreakerWindow: 2m
+  runbooks:
+    mode: file
+    path: /runbooks
+  limits:
+    stepTimeout: 5s
+    dedupCooldown: 3m
+    maxSteps: 3
+  destinations:
+    telegram:
+      - id: tg-primary
+        name: Telegram primary
+        enabled: true
+        botToken: "__FROM_SECRET_OR_UI_OVERRIDE__"
+        chatId: "-100000000000"
+        topicId: 0
+    mattermost:
+      - id: mm-primary
+        name: Mattermost primary
+        enabled: true
+        webhookUrl: "__FROM_SECRET_OR_UI_OVERRIDE__"
+        channel: incidents
+  routing:
+    rules:
+      - name: critical-broadcast
+        routeKey: critical
+        enabled: true
+        priority: 1
+        matchLabels:
+          severity: critical
+        destinations:
+          - tg-primary
+          - mm-primary

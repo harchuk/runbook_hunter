@@ -1,0 +1,48 @@
+server:
+  addr: ":8080"
+  readTimeout: 10s
+  writeTimeout: 30s
+worker:
+  interval: 30s
+  batchSize: 20
+  maxConcurrency: 4
+database:
+  driver: postgres
+  dsn: postgres://postgres:postgres@postgres:5432/runbook_hunter?sslmode=disable
+auth:
+  mode: basic
+  basicUser: admin
+  basicPass: change-me
+  jwtSecret: change-me
+security:
+  egressAllowlist:
+    - localhost
+    - 127.0.0.1
+    - '*.svc.cluster.local'
+  requestTimeout: 5s
+  retryCount: 2
+  circuitBreakerFails: 3
+  circuitBreakerWindow: 1m
+runbooks:
+  mode: file
+  path: /runbooks
+fingerprint:
+  fields:
+    - alertname
+    - service
+    - env
+    - instance|job
+limits:
+  stepTimeout: 5s
+  dedupCooldown: 5m
+  maxSteps: 3
+sources:
+  alertmanager:
+    - name: default
+      receiver: default
+      enabled: true
+destinations:
+  telegram: []
+  mattermost: []
+routing:
+  rules: []

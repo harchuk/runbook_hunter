@@ -1,0 +1,8 @@
+route:
+  receiver: runbook-hunter
+  group_by: ['alertname', 'service', 'env']
+receivers:
+  - name: runbook-hunter
+    webhook_configs:
+      - url: http://runbook-hunter-api.default.svc.cluster.local/api/alertmanager
+        send_resolved: true

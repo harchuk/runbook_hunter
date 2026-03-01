@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "runbook-hunter.fullname" . }}-ui
+spec:
+  type: {{ .Values.ui.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "runbook-hunter.name" . }}
+    app.kubernetes.io/component: ui
+  ports:
+    - port: {{ .Values.ui.service.port }}
+      targetPort: {{ .Values.ui.service.targetPort }}
+      protocol: TCP
+      name: http

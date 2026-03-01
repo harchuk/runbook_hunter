@@ -1,0 +1,36 @@
+{
+  "version": "4",
+  "groupKey": "{}:{alertname=\"API5xxSpike\"}",
+  "status": "firing",
+  "receiver": "runbook-hunter",
+  "groupLabels": {
+    "alertname": "API5xxSpike"
+  },
+  "commonLabels": {
+    "alertname": "API5xxSpike",
+    "service": "api",
+    "env": "prod",
+    "severity": "critical"
+  },
+  "commonAnnotations": {
+    "summary": "API 5xx is above threshold"
+  },
+  "externalURL": "http://alertmanager:9093",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "API5xxSpike",
+        "service": "api",
+        "env": "prod",
+        "severity": "critical",
+        "instance": "api-1"
+      },
+      "annotations": {
+        "summary": "API 5xx above 5%"
+      },
+      "startsAt": "2026-03-01T10:00:00Z",
+      "generatorURL": "http://prometheus/graph?g0.expr=..."
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+image:
+  repository: ghcr.io/example/runbook-hunter-backend
+  tag: latest
+
+uiImage:
+  repository: ghcr.io/example/runbook-hunter-ui
+  tag: latest
+
+ingress:
+  enabled: true
+  className: nginx
+  host: runbook-hunter.local
+
+auth:
+  mode: basic
+  basicUser: admin
+  basicPass: change-me
+
+secrets:
+  settingsCryptoKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+config:
+  database:
+    driver: postgres
+    dsn: postgres://postgres:postgres@postgres.default.svc.cluster.local:5432/runbook_hunter?sslmode=disable
+  auth:
+    mode: basic
+    basicUser: admin
+    basicPass: change-me
+  runbooks:
+    mode: file
+    path: /runbooks
+  destinations:
+    telegram:
+      - id: tg-default
+        name: Telegram primary
+        enabled: true
+        botToken: "${TELEGRAM_BOT_TOKEN}"
+        chatId: "-100123456789"
+        topicId: 0
+  routing:
+    rules:
+      - name: critical-to-telegram
+        routeKey: critical
+        enabled: true
+        priority: 10
+        matchLabels:
+          severity: critical
+        destinations:
+          - tg-default

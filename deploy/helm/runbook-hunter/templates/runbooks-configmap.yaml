@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "runbook-hunter.fullname" . }}-runbooks
+data:
+  api-5xx-spike.yaml: |
+    name: API 5xx spike
+    description: Investigate sharp increase in 5xx responses from API service.
+    match:
+      alertname: API5xxSpike
+    steps:
+      - name: API health endpoint
+        tool: http_get
+        args:
+          url: http://api.default.svc.cluster.local/healthz
+      - name: DNS check for API service
+        tool: dns_lookup
+        args:
+          host: api.default.svc.cluster.local
+      - name: Metrics snapshot
+        tool: fetch_json
+        args:
+          url: http://api.default.svc.cluster.local/metrics
+  latency-p95-spike.yaml: |
+    name: Latency p95 spike
+    description: Validate latency spike and upstream dependencies.
+    match:
+      alertname: LatencyP95Spike
+    steps:
+      - name: Ping gateway
+        tool: tcp_check
+        args:
+          address: gateway.default.svc.cluster.local:80
+      - name: Probe API readiness
+        tool: http_get
+        args:
+          url: http://api.default.svc.cluster.local/readyz
+      - name: Fetch latency debug endpoint
+        tool: fetch_json
+        args:
+          url: http://api.default.svc.cluster.local/debug/latency
+  db-pool-exhausted.yaml: |
+    name: DB pool exhausted
+    description: Check DB service and application DB-related status.
+    match:
+      alertname: DBPoolExhausted
+    steps:
+      - name: DB service DNS
+        tool: dns_lookup
+        args:
+          host: postgres.default.svc.cluster.local
+      - name: DB TCP connectivity
+        tool: tcp_check
+        args:
+          address: postgres.default.svc.cluster.local:5432
+      - name: App DB diagnostics
+        tool: fetch_json
+        args:
+          url: http://api.default.svc.cluster.local/debug/db

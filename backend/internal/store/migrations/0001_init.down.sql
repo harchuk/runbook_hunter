@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS delivery_states;
+DROP TABLE IF EXISTS approval_requests;
+DROP TABLE IF EXISTS settings_overrides;
+DROP TABLE IF EXISTS routing_rules;
+DROP TABLE IF EXISTS destination_configs;
+DROP TABLE IF EXISTS source_configs;
+DROP TABLE IF EXISTS runbooks;
+DROP TABLE IF EXISTS step_runs;
+DROP TABLE IF EXISTS signals;
+DROP TABLE IF EXISTS incidents;

@@ -1,24 +1,33 @@
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: runbook_hunter
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d runbook_hunter"]
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 10s
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: ["--mode=api", "--config=/app/config/config.yaml"]
     ports:
       - "8080:8080"
@@ -29,6 +38,11 @@ services:
     volumes:
       - ./examples/local/config.yaml:/app/config/config.yaml:ro
       - ./runbooks:/runbooks:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,6 +51,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: ["--mode=worker", "--config=/app/config/config.yaml", "--run-migrations=false"]
     environment:
       RH_AUTH_BASIC_USER: admin
@@ -45,6 +60,11 @@ services:
     volumes:
       - ./examples/local/config.yaml:/app/config/config.yaml:ro
       - ./runbooks:/runbooks:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,11 +75,17 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       API_INTERNAL_BASE: http://api:8080
       NEXT_PUBLIC_API_BASE: ""
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:

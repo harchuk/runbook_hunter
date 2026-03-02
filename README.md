@@ -95,6 +95,24 @@ Security notes:
 - Demo generation uses the same `POST /api/alertmanager` ingest path (no privileged bypass).
 - Demo runbooks execute read-only tools only (`http_get`, `dns_lookup`, `tcp_check`, `fetch_json`).
 
+### Docker Space/Recovery
+If Postgres becomes `unhealthy` and logs show `No space left on device`, Docker Desktop disk is full (not the DB itself).
+
+Recover quickly:
+```bash
+docker builder prune -af
+docker compose restart postgres
+docker compose ps
+```
+
+If you need full local reset (drops local DB data):
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+`docker-compose.yml` already limits container logs (`max-size=10m`, `max-file=3`) to reduce repeated log-growth incidents.
+
 ## Helm Install
 ```bash
 helm install runbook-hunter ./deploy/helm/runbook-hunter -f examples/k8s/values-minimal.yaml

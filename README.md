@@ -10,11 +10,17 @@ Security notes:
 ## Features (MVP)
 - Go backend (`api` + `worker` modes) and Next.js admin UI.
 - Alertmanager webhook ingest: `POST /api/alertmanager`.
+- Separate `Alerts` and `Incidents` operational views.
+- Incident-centric runbook lifecycle: one active execution per incident.
+- Closure engine (`Auto + Manual`) with explicit criteria and manual close/reopen.
+- Runbook schema `v2` (`check` + `action` step kinds, recommendations, required flags).
 - Config precedence: `UI overrides > ConfigMap defaults > built-in defaults`.
 - Deterministic configurable fingerprint.
 - Runbook sources: files (`/runbooks/*.yaml`) or DB mode.
 - Read-only tools: `http_get`, `dns_lookup`, `tcp_check`, `fetch_json`.
+- Action step integration: `ansible_awx_job` with mandatory approval path.
 - Destination routing + per-destination dedup (`content_hash + cooldown`).
+- GitOps-first change requests API (`/api/gitops/changes`) with strict mode support.
 - Health and observability: `/healthz`, `/readyz`, `/metrics`.
 
 ## Architecture
@@ -55,7 +61,7 @@ sequenceDiagram
   W->>DB: Poll open incidents
   W->>RB: Match runbook
   W->>W: Execute read-only steps
-  W->>DB: Save StepRun + brief
+  W->>DB: Save runbook execution steps + closure criteria + brief
   W->>R: Resolve destinations
   R->>TG: Send (dedup passed)
   R->>MM: Send (dedup passed)
@@ -106,6 +112,8 @@ API endpoints:
 - `PUT /api/settings/overrides`
 - `POST /api/settings/overrides/reset`
 
+If `gitops.enabled=true` and `gitops.mode=strict`, direct override write/reset endpoints return `409` with hint to use GitOps change requests.
+
 Reset payloads:
 - Global reset:
 ```json
@@ -141,14 +149,29 @@ Mattermost markdown:
 
 Dedup:
 - `content_hash = sha256(normalized_message_text)`
-- State key: `(incident_id, destination_id)`
+- State key: `(incident_id, destination_id)` + `execution_state_hash`
 - Skip if same hash within cooldown unless force post.
 
 ## API Summary
 - `POST /api/alertmanager`
+- `GET /api/alerts`
+- `GET /api/alerts/{id}`
 - `GET /api/incidents`
 - `GET /api/incidents/{id}`
+- `GET /api/incidents/{id}/alerts`
+- `GET /api/incidents/{id}/runbook-executions`
+- `GET /api/incidents/{id}/closure-criteria`
+- `GET /api/incidents/{id}/events`
+- `POST /api/incidents/{id}/close`
+- `POST /api/incidents/{id}/reopen`
+- `POST /api/incidents/{id}/runbook/rerun`
 - `POST /api/incidents/{id}/post-update`
+- `GET /api/approvals`
+- `POST /api/approvals/{id}/approve`
+- `POST /api/approvals/{id}/reject`
+- `POST /api/gitops/changes`
+- `GET /api/gitops/changes`
+- `GET /api/gitops/changes/{id}`
 - `GET /api/settings/effective`
 - `GET /api/settings/overrides`
 - `PUT /api/settings/overrides`

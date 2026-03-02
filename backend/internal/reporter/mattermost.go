@@ -26,15 +26,18 @@ func NewMattermostReporter(timeout time.Duration) *MattermostReporter {
 
 func FormatMattermostMessage(data MessageData) string {
 	return fmt.Sprintf(
-		"### :rotating_light: [%s] %s\n**Service:** %s  |  **Env:** %s\n**Incident:** #%d  |  **Status:** %s\n**Summary:** %s\n**Runbook:** %s\n_Updated: %s_",
-		strings.ToUpper(data.Severity),
-		data.AlertName,
-		data.Service,
-		data.Env,
+		"### :rotating_light: [%s] %s\n**Service:** %s  |  **Env:** %s\n**Incident:** #%d  |  **Status:** %s  |  **Closure:** %s\n**Summary:** %s\n**Runbook:** %s\n**Criteria:** %s\n**Steps:** %s\n_Updated: %s_\n`Security:` read-only checks only",
+		strings.ToUpper(nonEmpty(data.Severity, "unknown")),
+		nonEmpty(data.AlertName, "unknown"),
+		nonEmpty(data.Service, "n/a"),
+		nonEmpty(data.Env, "n/a"),
 		data.IncidentID,
-		data.Status,
-		data.Brief,
-		data.RunbookName,
+		nonEmpty(data.Status, "open"),
+		nonEmpty(data.ClosureState, "open"),
+		summarizeText(data.Brief, 320),
+		nonEmpty(data.RunbookName, "n/a"),
+		summarizeText(data.ClosureSummary, 260),
+		summarizeText(data.StepSummary, 260),
 		data.UpdatedAt.UTC().Format(time.RFC3339),
 	)
 }

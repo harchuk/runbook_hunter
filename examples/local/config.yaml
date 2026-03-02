@@ -48,3 +48,20 @@ destinations:
   mattermost: []
 routing:
   rules: []
+closure:
+  policy: auto+manual
+  autoCloseConsecutive: 2
+gitops:
+  enabled: true
+  mode: hybrid
+  repoUrl: https://github.com/harchuk/runbook_hunter
+  baseBranch: main
+  basePath: .
+  commitSignoff: true
+  provider: github
+  tokenSecretRef: runbook-hunter-gitops-token
+awx:
+  enabled: false
+  url: ""
+  requestTimeout: 20s
+  defaultInventoryId: 0

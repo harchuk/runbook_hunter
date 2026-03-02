@@ -20,7 +20,7 @@ func TestTelegramFormatting(t *testing.T) {
 		RunbookName: "API 5xx spike",
 		UpdatedAt:   time.Unix(0, 0).UTC(),
 	})
-	if !strings.Contains(msg, "Runbook Hunter") || !strings.Contains(msg, "Incident: #42") || !strings.Contains(msg, "Findings:") {
+	if !strings.Contains(msg, "[CRITICAL]") || !strings.Contains(msg, "Incident: #42") || !strings.Contains(msg, "Security: read-only checks") {
 		t.Fatalf("unexpected telegram format: %s", msg)
 	}
 }

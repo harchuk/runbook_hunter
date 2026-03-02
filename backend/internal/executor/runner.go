@@ -14,6 +14,7 @@ import (
 type Result struct {
 	StepName   string
 	Tool       string
+	Kind       string
 	Status     string
 	Output     string
 	Error      string
@@ -47,20 +48,38 @@ func (r *Runner) Run(ctx context.Context, steps []runbooks.Step, maxSteps int) [
 	}
 	results := make([]Result, 0, maxSteps)
 	for i := 0; i < maxSteps; i++ {
-		results = append(results, r.executeStep(ctx, steps[i]))
+		results = append(results, r.RunStep(ctx, steps[i]))
 	}
 	return results
 }
 
-func (r *Runner) executeStep(ctx context.Context, step runbooks.Step) Result {
-	res := Result{StepName: step.Name, Tool: step.Tool, StartedAt: time.Now().UTC()}
-	if res.StepName == "" {
+func (r *Runner) RunStep(ctx context.Context, step runbooks.Step) Result {
+	res := Result{StepName: step.Name, Tool: step.Tool, Kind: step.Kind, StartedAt: time.Now().UTC()}
+	if strings.TrimSpace(res.StepName) == "" {
 		res.StepName = step.Tool
+	}
+	if strings.TrimSpace(step.Kind) == "" {
+		step.Kind = "check"
+	}
+	if step.Kind != "check" {
+		res.Status = "skipped"
+		res.Error = "non-check step must be handled by worker action runtime"
+		res.FinishedAt = time.Now().UTC()
+		return res
+	}
+
+	timeout := r.Timeout
+	if step.Timeout > 0 {
+		timeout = step.Timeout
+	}
+	retries := r.Retries
+	if step.Retries > 0 {
+		retries = step.Retries
 	}
 
 	var lastErr error
-	for attempt := 0; attempt <= r.Retries; attempt++ {
-		out, err := r.exec(ctx, step)
+	for attempt := 0; attempt <= retries; attempt++ {
+		out, err := r.exec(ctx, step, timeout)
 		if err == nil {
 			res.Status = "ok"
 			res.Output = out
@@ -75,11 +94,11 @@ func (r *Runner) executeStep(ctx context.Context, step runbooks.Step) Result {
 	return res
 }
 
-func (r *Runner) exec(ctx context.Context, step runbooks.Step) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+func (r *Runner) exec(ctx context.Context, step runbooks.Step, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	client := &http.Client{Timeout: r.Timeout}
+	client := &http.Client{Timeout: timeout}
 	switch step.Tool {
 	case "http_get":
 		rawURL := step.Args["url"]
@@ -124,7 +143,7 @@ func (r *Runner) exec(ctx context.Context, step runbooks.Step) (string, error) {
 		if !IsAllowedHost(address, r.Allowlist) {
 			return "", fmt.Errorf("host is not allowlisted")
 		}
-		return TCPCheck(address, r.Timeout)
+		return TCPCheck(address, timeout)
 	default:
 		return "", fmt.Errorf("unsupported read-only tool: %s", step.Tool)
 	}

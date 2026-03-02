@@ -21,6 +21,9 @@ type Config struct {
 	Sources      SourcesConfig      `yaml:"sources" json:"sources"`
 	Destinations DestinationsConfig `yaml:"destinations" json:"destinations"`
 	Routing      RoutingConfig      `yaml:"routing" json:"routing"`
+	Closure      ClosureConfig      `yaml:"closure" json:"closure"`
+	GitOps       GitOpsConfig       `yaml:"gitops" json:"gitops"`
+	AWX          AWXConfig          `yaml:"awx" json:"awx"`
 }
 
 type ServerConfig struct {
@@ -116,6 +119,31 @@ type RoutingRule struct {
 	Destinations []string          `yaml:"destinations" json:"destinations"`
 }
 
+type ClosureConfig struct {
+	Policy               string `yaml:"policy" json:"policy"`
+	AutoCloseConsecutive int    `yaml:"autoCloseConsecutive" json:"autoCloseConsecutive"`
+}
+
+type GitOpsConfig struct {
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	Mode           string `yaml:"mode" json:"mode"`
+	RepoURL        string `yaml:"repoUrl" json:"repoUrl"`
+	BaseBranch     string `yaml:"baseBranch" json:"baseBranch"`
+	BasePath       string `yaml:"basePath" json:"basePath"`
+	CommitSignoff  bool   `yaml:"commitSignoff" json:"commitSignoff"`
+	Provider       string `yaml:"provider" json:"provider"`
+	TokenSecretRef string `yaml:"tokenSecretRef" json:"tokenSecretRef"`
+	Token          string `yaml:"token" json:"-"`
+}
+
+type AWXConfig struct {
+	Enabled            bool          `yaml:"enabled" json:"enabled"`
+	URL                string        `yaml:"url" json:"url"`
+	Token              string        `yaml:"token" json:"-"`
+	RequestTimeout     time.Duration `yaml:"requestTimeout" json:"requestTimeout"`
+	DefaultInventoryID int64         `yaml:"defaultInventoryId" json:"defaultInventoryId"`
+}
+
 func BuiltInDefaults() Config {
 	return Config{
 		Server: ServerConfig{
@@ -159,6 +187,21 @@ func BuiltInDefaults() Config {
 		},
 		Destinations: DestinationsConfig{},
 		Routing:      RoutingConfig{Rules: []RoutingRule{}},
+		Closure: ClosureConfig{
+			Policy:               "auto+manual",
+			AutoCloseConsecutive: 2,
+		},
+		GitOps: GitOpsConfig{
+			Enabled:    true,
+			Mode:       "strict",
+			BaseBranch: "main",
+			BasePath:   ".",
+			Provider:   "github",
+		},
+		AWX: AWXConfig{
+			Enabled:        false,
+			RequestTimeout: 20 * time.Second,
+		},
 	}
 }
 
@@ -193,6 +236,9 @@ func applyEnvOverrides(cfg *Config) {
 		"RH_RUNBOOK_MODE":        &cfg.Runbooks.Mode,
 		"RH_RUNBOOK_PATH":        &cfg.Runbooks.Path,
 		"RH_SETTINGS_CRYPTO_KEY": &cfg.Security.SettingsCryptoKeyB64,
+		"RH_GITOPS_TOKEN":        &cfg.GitOps.Token,
+		"RH_AWX_TOKEN":           &cfg.AWX.Token,
+		"RH_AWX_URL":             &cfg.AWX.URL,
 	}
 	for env, ptr := range overrides {
 		if value := os.Getenv(env); value != "" {
@@ -216,6 +262,33 @@ func (c Config) Validate() error {
 	}
 	if c.Limits.MaxSteps <= 0 {
 		return errors.New("limits.maxSteps must be > 0")
+	}
+	mode := strings.ToLower(strings.TrimSpace(c.GitOps.Mode))
+	if mode == "" {
+		mode = "strict"
+	}
+	if mode != "strict" && mode != "hybrid" && mode != "disabled" {
+		return errors.New("gitops.mode must be strict, hybrid or disabled")
+	}
+	provider := strings.ToLower(strings.TrimSpace(c.GitOps.Provider))
+	if provider == "" {
+		provider = "github"
+	}
+	if provider != "github" {
+		return errors.New("gitops.provider must be github in MVP")
+	}
+	policy := strings.ToLower(strings.TrimSpace(c.Closure.Policy))
+	if policy == "" {
+		policy = "auto+manual"
+	}
+	if policy != "auto+manual" && policy != "manual" {
+		return errors.New("closure.policy must be auto+manual or manual")
+	}
+	if c.Closure.AutoCloseConsecutive <= 0 {
+		return errors.New("closure.autoCloseConsecutive must be > 0")
+	}
+	if c.AWX.RequestTimeout <= 0 {
+		return errors.New("awx.requestTimeout must be > 0")
 	}
 	return nil
 }

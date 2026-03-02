@@ -1,17 +1,36 @@
+schemaVersion: v2
 name: API 5xx spike
 description: Investigate sharp increase in 5xx responses from API service.
 match:
   alertname: API5xxSpike
 steps:
   - name: API health endpoint
+    kind: check
     tool: http_get
+    required: true
+    timeout: 5s
+    retries: 1
+    recommendation_on_fail: Check upstream dependencies and recent deploy diff.
+    recommendation_on_pass: Continue with latency and error-budget checks.
     args:
       url: http://api.default.svc.cluster.local/healthz
   - name: DNS check for API service
+    kind: check
     tool: dns_lookup
+    required: true
+    timeout: 5s
+    retries: 1
+    recommendation_on_fail: Fix DNS/service discovery before deeper diagnostics.
+    recommendation_on_pass: DNS is healthy.
     args:
       host: api.default.svc.cluster.local
   - name: Metrics snapshot
+    kind: check
     tool: fetch_json
+    required: false
+    timeout: 6s
+    retries: 1
+    recommendation_on_fail: Validate /metrics endpoint exposure and RBAC.
+    recommendation_on_pass: Review error-rate and latency series.
     args:
       url: http://api.default.svc.cluster.local/metrics

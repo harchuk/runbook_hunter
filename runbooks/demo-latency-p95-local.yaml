@@ -1,17 +1,36 @@
+schemaVersion: v2
 name: Demo Latency p95 spike (local)
 description: Local latency runbook with successful read-only network checks.
 match:
   alertname: DemoLatencyP95Spike
 steps:
   - name: API TCP check
+    kind: check
     tool: tcp_check
+    required: true
+    timeout: 4s
+    retries: 1
+    recommendation_on_fail: API listener unavailable.
+    recommendation_on_pass: TCP listener alive.
     args:
       address: api:8080
   - name: Metrics scrape probe
+    kind: check
     tool: http_get
+    required: true
+    timeout: 4s
+    retries: 1
+    recommendation_on_fail: Metrics endpoint unreachable.
+    recommendation_on_pass: Metrics endpoint reachable.
     args:
       url: http://api:8080/metrics
   - name: API health JSON
+    kind: check
     tool: fetch_json
+    required: false
+    timeout: 4s
+    retries: 1
+    recommendation_on_fail: Health endpoint parse failed.
+    recommendation_on_pass: Health payload returned.
     args:
       url: http://api:8080/healthz

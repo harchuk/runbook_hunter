@@ -14,15 +14,18 @@ import (
 )
 
 type MessageData struct {
-	Severity    string
-	AlertName   string
-	Service     string
-	Env         string
-	IncidentID  uint
-	Status      string
-	Brief       string
-	RunbookName string
-	UpdatedAt   time.Time
+	Severity       string
+	AlertName      string
+	Service        string
+	Env            string
+	IncidentID     uint
+	Status         string
+	Brief          string
+	RunbookName    string
+	UpdatedAt      time.Time
+	ClosureState   string
+	ClosureSummary string
+	StepSummary    string
 }
 
 type TelegramReporter struct {
@@ -39,20 +42,24 @@ func NewTelegramReporter(timeout time.Duration) *TelegramReporter {
 func FormatTelegramMessage(data MessageData) string {
 	severity := strings.ToUpper(nonEmpty(data.Severity, "unknown"))
 	status := strings.ToUpper(nonEmpty(data.Status, "open"))
-	findings := summarizeBrief(data.Brief, 5)
+	closureState := strings.ToUpper(nonEmpty(data.ClosureState, "open"))
 	updatedAt := data.UpdatedAt.UTC().Format("2006-01-02 15:04:05 MST")
 
+	brief := summarizeBrief(data.Brief, 4)
+	steps := summarizeText(data.StepSummary, 240)
+	criteria := summarizeText(data.ClosureSummary, 240)
+
 	parts := []string{
-		fmt.Sprintf("%s Runbook Hunter", severityIcon(severity)),
-		fmt.Sprintf("%s %s  |  %s %s", severityIcon(severity), severity, statusIcon(status), status),
-		fmt.Sprintf("Alert: %s", nonEmpty(data.AlertName, "n/a")),
-		fmt.Sprintf("Scope: service=%s env=%s", nonEmpty(data.Service, "n/a"), nonEmpty(data.Env, "n/a")),
-		fmt.Sprintf("Incident: #%d", data.IncidentID),
+		fmt.Sprintf("%s [%s] %s", severityIcon(severity), severity, nonEmpty(data.AlertName, "unknown alert")),
+		fmt.Sprintf("Service: %s | Env: %s", nonEmpty(data.Service, "n/a"), nonEmpty(data.Env, "n/a")),
+		fmt.Sprintf("Incident: #%d | Status: %s | Closure: %s", data.IncidentID, status, closureState),
 		fmt.Sprintf("Runbook: %s", nonEmpty(data.RunbookName, "n/a")),
-		"Findings:",
-		findings,
+		"Summary:",
+		brief,
+		fmt.Sprintf("Criteria: %s", criteria),
+		fmt.Sprintf("Steps: %s", steps),
 		fmt.Sprintf("Updated: %s", updatedAt),
-		"Mode: read-only diagnostics",
+		"Security: read-only checks, no write actions",
 	}
 	return strings.Join(parts, "\n")
 }
@@ -122,17 +129,6 @@ func severityIcon(severity string) string {
 	}
 }
 
-func statusIcon(status string) string {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "resolved":
-		return "✅"
-	case "open", "firing":
-		return "🟠"
-	default:
-		return "🔎"
-	}
-}
-
 func summarizeBrief(brief string, maxLines int) string {
 	brief = strings.TrimSpace(brief)
 	if brief == "" {
@@ -164,4 +160,15 @@ func summarizeBrief(brief string, maxLines int) string {
 		lines = append(lines, fmt.Sprintf("- ... and %d more facts", len(chunks)-len(lines)))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func summarizeText(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "n/a"
+	}
+	if maxLen <= 0 || len(value) <= maxLen {
+		return value
+	}
+	return value[:maxLen-3] + "..."
 }

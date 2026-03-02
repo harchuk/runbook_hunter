@@ -48,12 +48,21 @@ function withAuth(headers?: Record<string, string>): Record<string, string> {
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
   const headers = withAuth((init?.headers as Record<string, string> | undefined) || undefined);
-  const res = await fetch(buildURL(path), {
+  return fetch(buildURL(path), {
     credentials: 'include',
     ...init,
     headers
   });
-  return res;
+}
+
+async function parseJSON<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!res.ok) {
+    const message = payload?.error || payload?.message || `request failed: ${res.status}`;
+    throw new Error(message);
+  }
+  return payload as T;
 }
 
 export function setBasicAuth(user: string, pass: string) {
@@ -85,57 +94,141 @@ export function clearAuth() {
 }
 
 export async function fetchIncidents() {
-  const res = await request('/api/incidents');
-  if (!res.ok) throw new Error(`incidents request failed: ${res.status}`);
-  return res.json();
+  return parseJSON<any[]>(await request('/api/incidents'));
 }
 
 export async function fetchIncident(id: number) {
-  const res = await request(`/api/incidents/${id}`);
-  if (!res.ok) throw new Error(`incident request failed: ${res.status}`);
-  return res.json();
+  return parseJSON<any>(await request(`/api/incidents/${id}`));
+}
+
+export async function fetchIncidentAlerts(id: number) {
+  return parseJSON<any[]>(await request(`/api/incidents/${id}/alerts`));
+}
+
+export async function fetchIncidentRunbookExecutions(id: number) {
+  return parseJSON<any[]>(await request(`/api/incidents/${id}/runbook-executions`));
+}
+
+export async function fetchIncidentClosureCriteria(id: number) {
+  return parseJSON<any>(await request(`/api/incidents/${id}/closure-criteria`));
+}
+
+export async function fetchIncidentEvents(id: number) {
+  return parseJSON<any[]>(await request(`/api/incidents/${id}/events`));
+}
+
+export async function closeIncident(id: number, reason: string) {
+  return parseJSON<any>(
+    await request(`/api/incidents/${id}/close`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    })
+  );
+}
+
+export async function reopenIncident(id: number, reason: string) {
+  return parseJSON<any>(
+    await request(`/api/incidents/${id}/reopen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    })
+  );
+}
+
+export async function rerunIncidentRunbook(id: number) {
+  return parseJSON<any>(
+    await request(`/api/incidents/${id}/runbook/rerun`, {
+      method: 'POST'
+    })
+  );
+}
+
+export async function fetchAlerts() {
+  return parseJSON<any[]>(await request('/api/alerts'));
+}
+
+export async function fetchAlert(id: number) {
+  return parseJSON<any>(await request(`/api/alerts/${id}`));
+}
+
+export async function fetchApprovals() {
+  return parseJSON<any[]>(await request('/api/approvals'));
+}
+
+export async function approveRequest(id: number) {
+  return parseJSON<any>(
+    await request(`/api/approvals/${id}/approve`, {
+      method: 'POST'
+    })
+  );
+}
+
+export async function rejectRequest(id: number, reason: string) {
+  return parseJSON<any>(
+    await request(`/api/approvals/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    })
+  );
+}
+
+export async function fetchGitOpsChanges() {
+  return parseJSON<any[]>(await request('/api/gitops/changes'));
+}
+
+export async function fetchGitOpsChange(id: number) {
+  return parseJSON<any>(await request(`/api/gitops/changes/${id}`));
+}
+
+export async function createGitOpsChange(payload: { change_type: string; title: string; desired: any }) {
+  return parseJSON<any>(
+    await request('/api/gitops/changes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+  );
 }
 
 export async function fetchEffectiveSettings() {
-  const res = await request('/api/settings/effective');
-  if (!res.ok) throw new Error(`settings request failed: ${res.status}`);
-  return res.json();
+  return parseJSON<any>(await request('/api/settings/effective'));
 }
 
 export async function fetchOverrides() {
-  const res = await request('/api/settings/overrides');
-  if (!res.ok) throw new Error(`overrides request failed: ${res.status}`);
-  return res.json();
+  return parseJSON<any>(await request('/api/settings/overrides'));
 }
 
 export async function saveOverrides(payload: unknown) {
-  const res = await request('/api/settings/overrides', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  if (!res.ok) throw new Error(`save overrides failed: ${res.status}`);
-  return res.json();
+  return parseJSON<any>(
+    await request('/api/settings/overrides', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+  );
 }
 
 export async function resetOverrides(scope: 'all' | 'keys', keys: string[] = []) {
-  const res = await request('/api/settings/overrides/reset', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scope, keys })
-  });
-  if (!res.ok) throw new Error(`reset overrides failed: ${res.status}`);
-  return res.json();
+  return parseJSON<any>(
+    await request('/api/settings/overrides/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope, keys })
+    })
+  );
 }
 
 export async function postUpdateNow(incidentId: number, destinationIds: string[]) {
-  const res = await request(`/api/incidents/${incidentId}/post-update`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ destinationIds })
-  });
-  if (!res.ok) throw new Error(`post update failed: ${res.status}`);
-  return res.json();
+  return parseJSON<any>(
+    await request(`/api/incidents/${incidentId}/post-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destinationIds })
+    })
+  );
 }
 
 export async function generateDemoIncidents() {

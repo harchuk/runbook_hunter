@@ -48,3 +48,20 @@ config:
           severity: critical
         destinations:
           - tg-default
+  closure:
+    policy: auto+manual
+    autoCloseConsecutive: 2
+  gitops:
+    enabled: true
+    mode: strict
+    repoUrl: https://github.com/harchuk/runbook_hunter
+    baseBranch: main
+    basePath: .
+    commitSignoff: true
+    provider: github
+    tokenSecretRef: runbook-hunter-gitops-token
+  awx:
+    enabled: false
+    url: ""
+    requestTimeout: 20s
+    defaultInventoryId: 0

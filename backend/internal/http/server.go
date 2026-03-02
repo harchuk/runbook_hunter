@@ -46,21 +46,38 @@ func NewServer(a *app.App) *Server {
 	r.Get("/readyz", obs.Readyz(a.Repo.Ping))
 	r.Handle("/metrics", promhttp.Handler())
 
-	r.Post("/api/alertmanager", func(w http.ResponseWriter, req *http.Request) {
-		h := &handler{app: a}
-		h.postAlertmanager(w, req)
-	})
+	h := &handler{app: a}
+	r.Post("/api/alertmanager", h.postAlertmanager)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Use(authMiddleware(a))
-		h := &handler{app: a}
+
+		api.Get("/alerts", h.getAlerts)
+		api.Get("/alerts/{id}", h.getAlert)
+
 		api.Get("/incidents", h.getIncidents)
 		api.Get("/incidents/{id}", h.getIncident)
+		api.Get("/incidents/{id}/alerts", h.getIncidentAlerts)
+		api.Get("/incidents/{id}/runbook-executions", h.getIncidentRunbookExecutions)
+		api.Get("/incidents/{id}/closure-criteria", h.getIncidentClosureCriteria)
+		api.Get("/incidents/{id}/events", h.getIncidentEvents)
 		api.Post("/incidents/{id}/post-update", h.postUpdateNow)
+		api.Post("/incidents/{id}/close", h.postCloseIncident)
+		api.Post("/incidents/{id}/reopen", h.postReopenIncident)
+		api.Post("/incidents/{id}/runbook/rerun", h.postRerunRunbook)
+
 		api.Get("/settings/effective", h.getSettingsEffective)
 		api.Get("/settings/overrides", h.getSettingsOverrides)
 		api.Put("/settings/overrides", h.putSettingsOverrides)
 		api.Post("/settings/overrides/reset", h.resetSettingsOverrides)
+
+		api.Get("/approvals", h.getApprovals)
+		api.Post("/approvals/{id}/approve", h.approveRequest)
+		api.Post("/approvals/{id}/reject", h.rejectRequest)
+
+		api.Post("/gitops/changes", h.createGitOpsChange)
+		api.Get("/gitops/changes", h.listGitOpsChanges)
+		api.Get("/gitops/changes/{id}", h.getGitOpsChange)
 	})
 
 	server := &http.Server{
@@ -128,13 +145,60 @@ func (h *handler) postAlertmanager(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"processed": processed, "total": len(payload.Alerts)})
 }
 
-func (h *handler) getIncidents(w http.ResponseWriter, r *http.Request) {
-	incidents, err := h.app.Repo.ListIncidents(r.Context(), 100)
+func (h *handler) getAlerts(w http.ResponseWriter, r *http.Request) {
+	alerts, err := h.app.Repo.ListAlerts(r.Context(), 500)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, incidents)
+	writeJSON(w, http.StatusOK, mapSignalsResponse(alerts))
+}
+
+func (h *handler) getAlert(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	alert, err := h.app.Repo.GetAlert(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, mapSignalResponse(alert))
+}
+
+func (h *handler) getIncidents(w http.ResponseWriter, r *http.Request) {
+	incidents, err := h.app.Repo.ListIncidents(r.Context(), 200)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	response := make([]map[string]any, 0, len(incidents))
+	for _, item := range incidents {
+		response = append(response, map[string]any{
+			"id":            item.ID,
+			"createdAt":     item.CreatedAt,
+			"updatedAt":     item.UpdatedAt,
+			"alertName":     item.AlertName,
+			"service":       item.Service,
+			"env":           item.Env,
+			"severity":      item.Severity,
+			"status":        item.Status,
+			"runbookName":   item.RunbookName,
+			"brief":         item.Brief,
+			"closureState":  item.ClosureState,
+			"closureReason": item.ClosureReason,
+			"alerts_total":  item.AlertsTotal,
+			"alerts_firing": item.AlertsFiring,
+			"closure_ready": item.ClosureReady,
+		})
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *handler) getIncident(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +216,69 @@ func (h *handler) getIncident(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, incident)
+	response := map[string]any{
+		"incident":   mapIncidentResponse(incident.Incident),
+		"steps":      incident.Steps,
+		"executions": incident.Executions,
+		"alerts":     mapSignalsResponse(incident.Alerts),
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *handler) getIncidentAlerts(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	alerts, err := h.app.Repo.ListIncidentAlerts(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, mapSignalsResponse(alerts))
+}
+
+func (h *handler) getIncidentRunbookExecutions(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	execs, err := h.app.Repo.ListRunbookExecutions(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, execs)
+}
+
+func (h *handler) getIncidentClosureCriteria(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	criteria, err := h.app.Repo.GetIncidentClosureCriteria(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, criteria)
+}
+
+func (h *handler) getIncidentEvents(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	events, err := h.app.Repo.ListIncidentEvents(r.Context(), id, 300)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, events)
 }
 
 func (h *handler) postUpdateNow(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +297,63 @@ func (h *handler) postUpdateNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "queued"})
+}
+
+func (h *handler) postCloseIncident(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if strings.TrimSpace(body.Reason) == "" {
+		body.Reason = "operator close"
+	}
+	if err := h.app.Repo.ManualCloseIncident(r.Context(), id, body.Reason); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "closed"})
+}
+
+func (h *handler) postReopenIncident(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if strings.TrimSpace(body.Reason) == "" {
+		body.Reason = "operator reopen"
+	}
+	if err := h.app.Repo.ManualReopenIncident(r.Context(), id, body.Reason); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "reopened"})
+}
+
+func (h *handler) postRerunRunbook(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := h.app.Repo.ReRunIncidentRunbook(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := h.app.Worker.PostUpdateNow(r.Context(), id, nil); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "rerun_started"})
 }
 
 func (h *handler) getSettingsEffective(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +375,16 @@ func (h *handler) getSettingsOverrides(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) putSettingsOverrides(w http.ResponseWriter, r *http.Request) {
+	strict, err := h.app.Settings.IsGitOpsStrict(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if strict {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "gitops strict mode enabled", "hint": "use POST /api/gitops/changes"})
+		return
+	}
+
 	var payload map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -205,6 +398,16 @@ func (h *handler) putSettingsOverrides(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) resetSettingsOverrides(w http.ResponseWriter, r *http.Request) {
+	strict, err := h.app.Settings.IsGitOpsStrict(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if strict {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "gitops strict mode enabled", "hint": "use POST /api/gitops/changes"})
+		return
+	}
+
 	var payload struct {
 		Scope string   `json:"scope"`
 		Keys  []string `json:"keys"`
@@ -229,6 +432,103 @@ func (h *handler) resetSettingsOverrides(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
+func (h *handler) getApprovals(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.app.Repo.ListPendingApprovals(r.Context(), 200)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
+func (h *handler) approveRequest(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := h.app.Repo.UpdateApprovalStatus(r.Context(), id, "approved", "approved from api"); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})
+}
+
+func (h *handler) rejectRequest(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if strings.TrimSpace(body.Reason) == "" {
+		body.Reason = "rejected"
+	}
+	if err := h.app.Repo.UpdateApprovalStatus(r.Context(), id, "rejected", body.Reason); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
+}
+
+func (h *handler) createGitOpsChange(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ChangeType string         `json:"change_type"`
+		Title      string         `json:"title"`
+		Desired    map[string]any `json:"desired"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(payload.ChangeType) == "" {
+		payload.ChangeType = "settings"
+	}
+	if strings.TrimSpace(payload.Title) == "" {
+		payload.Title = "Runbook Hunter change request"
+	}
+	row, err := h.app.Repo.CreateGitOpsChange(r.Context(), store.GitOpsChangeInput{
+		ChangeType: payload.ChangeType,
+		Title:      payload.Title,
+		Desired:    payload.Desired,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, row)
+}
+
+func (h *handler) listGitOpsChanges(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.app.Repo.ListGitOpsChanges(r.Context(), 200)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
+func (h *handler) getGitOpsChange(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	row, err := h.app.Repo.GetGitOpsChange(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
 }
 
 func authMiddleware(a *app.App) func(http.Handler) http.Handler {
@@ -278,4 +578,76 @@ func writeJSON(w http.ResponseWriter, code int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func mapSignalsResponse(items []store.Signal) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, mapSignalResponse(item))
+	}
+	return out
+}
+
+func mapSignalResponse(item store.Signal) map[string]any {
+	return map[string]any{
+		"id":           item.ID,
+		"createdAt":    item.CreatedAt,
+		"incidentId":   item.IncidentID,
+		"fingerprint":  item.Fingerprint,
+		"alertName":    item.AlertName,
+		"status":       item.Status,
+		"labels":       decodeJSONMap(item.Labels),
+		"annotations":  decodeJSONMap(item.Annotations),
+		"startsAt":     item.StartsAt,
+		"endsAt":       item.EndsAt,
+		"generatorUrl": item.GeneratorURL,
+	}
+}
+
+func mapIncidentResponse(item store.Incident) map[string]any {
+	return map[string]any{
+		"id":                 item.ID,
+		"createdAt":          item.CreatedAt,
+		"updatedAt":          item.UpdatedAt,
+		"fingerprint":        item.Fingerprint,
+		"routeKey":           item.RouteKey,
+		"alertName":          item.AlertName,
+		"service":            item.Service,
+		"env":                item.Env,
+		"severity":           item.Severity,
+		"status":             item.Status,
+		"runbookName":        item.RunbookName,
+		"brief":              item.Brief,
+		"openedAt":           item.OpenedAt,
+		"closedAt":           item.ClosedAt,
+		"lastSignalAt":       item.LastSignalAt,
+		"labels":             decodeJSONMap(item.Labels),
+		"closureState":       item.ClosureState,
+		"closureReason":      item.ClosureReason,
+		"closureCriteria":    decodeJSONAny(item.ClosureCriteria),
+		"resolvedAt":         item.ResolvedAt,
+		"closureReadyStreak": item.ClosureReadyStreak,
+	}
+}
+
+func decodeJSONMap(raw []byte) map[string]any {
+	if len(raw) == 0 {
+		return map[string]any{}
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil || out == nil {
+		return map[string]any{}
+	}
+	return out
+}
+
+func decodeJSONAny(raw []byte) any {
+	if len(raw) == 0 {
+		return map[string]any{}
+	}
+	var out any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return map[string]any{}
+	}
+	return out
 }

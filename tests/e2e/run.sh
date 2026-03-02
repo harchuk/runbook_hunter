@@ -69,8 +69,8 @@ incident_id_by_alertname() {
   local body="$2"
   echo "$body" \
     | tr '{' '\n' \
-    | grep "\"AlertName\":\"${alert_name}\"" \
-    | sed -n 's/.*"ID":\([0-9][0-9]*\).*/\1/p' \
+    | grep "\"alertName\":\"${alert_name}\"" \
+    | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p' \
     | head -n1
 }
 
@@ -90,10 +90,10 @@ log "Posting demo payload set"
 
 log "Checking incidents list with auth"
 incidents_resp="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/incidents")"
-assert_contains "$incidents_resp" '"ID":' "incidents list should contain at least one incident"
-assert_contains "$incidents_resp" '"AlertName":"DemoAPI5xxSpike"' "demo API incident should be present"
-assert_contains "$incidents_resp" '"AlertName":"DemoLatencyP95Spike"' "demo latency incident should be present"
-assert_contains "$incidents_resp" '"AlertName":"DemoDBPoolExhausted"' "demo DB incident should be present"
+assert_contains "$incidents_resp" '"id":' "incidents list should contain at least one incident"
+assert_contains "$incidents_resp" '"alertName":"DemoAPI5xxSpike"' "demo API incident should be present"
+assert_contains "$incidents_resp" '"alertName":"DemoLatencyP95Spike"' "demo latency incident should be present"
+assert_contains "$incidents_resp" '"alertName":"DemoDBPoolExhausted"' "demo DB incident should be present"
 
 demo_api_id="$(incident_id_by_alertname "DemoAPI5xxSpike" "$incidents_resp")"
 if [[ -z "${demo_api_id}" ]]; then
@@ -112,6 +112,47 @@ wait_for_match \
 demo_detail="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/incidents/${demo_api_id}")"
 assert_contains "$demo_detail" '"StepName":"API health endpoint"' "demo runbook step should be recorded"
 assert_contains "$demo_detail" '"Status":"ok"' "demo runbook should produce at least one successful step"
+
+log "Checking alerts API"
+alerts_resp="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/alerts")"
+assert_contains "$alerts_resp" '"incidentId":' "alerts list should include incident linkage"
+
+log "Checking runbook executions API"
+exec_resp="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/incidents/${demo_api_id}/runbook-executions")"
+assert_contains "$exec_resp" '"execution"' "incident runbook executions endpoint should return execution payload"
+
+log "Checking closure criteria API"
+criteria_resp="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/incidents/${demo_api_id}/closure-criteria")"
+assert_contains "$criteria_resp" '"alerts_resolved"' "closure criteria response should include alerts_resolved"
+
+log "Checking manual close/reopen flow"
+curl -fsS -u "$AUTH_USER:$AUTH_PASS" -X POST "$API_BASE/api/incidents/${demo_api_id}/close" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"e2e close"}' >/dev/null
+closed_detail="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/incidents/${demo_api_id}")"
+assert_contains "$closed_detail" '"closureState":"closed"' "incident should be closed after manual close"
+
+curl -fsS -u "$AUTH_USER:$AUTH_PASS" -X POST "$API_BASE/api/incidents/${demo_api_id}/reopen" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"e2e reopen"}' >/dev/null
+reopened_detail="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/incidents/${demo_api_id}")"
+assert_contains "$reopened_detail" '"closureState":"reopened"' "incident should be reopened after manual reopen"
+
+log "Checking GitOps change request API"
+change_payload='{"change_type":"settings","title":"e2e change","desired":{"routing":{"rules":[]}}}'
+curl -fsS -u "$AUTH_USER:$AUTH_PASS" -X POST "$API_BASE/api/gitops/changes" \
+  -H 'Content-Type: application/json' \
+  -d "$change_payload" >/dev/null
+changes_resp="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/gitops/changes")"
+assert_contains "$changes_resp" '"Title":"e2e change"' "gitops changes list should include created change request"
+
+log "Checking approvals API availability"
+approvals_resp="$(curl -fsS -u "$AUTH_USER:$AUTH_PASS" "$API_BASE/api/approvals")"
+if [[ "$approvals_resp" != \[* ]]; then
+  echo "[e2e][FAIL] approvals endpoint should return JSON array"
+  echo "[e2e][FAIL] got: $approvals_resp"
+  exit 1
+fi
 
 log "Saving UI override"
 overrides_payload='{"server":{"addr":":9099"}}'
@@ -133,5 +174,7 @@ assert_contains "$effective_after_reset" '"addr":":8080"' "effective settings sh
 log "Checking UI markup"
 ui_html="$(curl -fsS "$UI_BASE")"
 assert_contains "$ui_html" 'Runbook Hunter Console' "UI homepage should include hero heading"
+assert_contains "$ui_html" 'Changes (GitOps)' "UI should expose GitOps changes tab"
+assert_contains "$ui_html" 'Alerts' "UI should expose alerts tab"
 
 log "E2E smoke passed"

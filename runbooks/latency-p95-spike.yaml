@@ -1,17 +1,36 @@
+schemaVersion: v2
 name: Latency p95 spike
 description: Validate latency spike and upstream dependencies.
 match:
   alertname: LatencyP95Spike
 steps:
   - name: Ping gateway
+    kind: check
     tool: tcp_check
+    required: true
+    timeout: 5s
+    retries: 1
+    recommendation_on_fail: Network path to gateway is unstable.
+    recommendation_on_pass: Gateway port responds.
     args:
       address: gateway.default.svc.cluster.local:80
   - name: Probe API readiness
+    kind: check
     tool: http_get
+    required: true
+    timeout: 6s
+    retries: 1
+    recommendation_on_fail: Inspect pod readiness gates and ingress routing.
+    recommendation_on_pass: Readiness endpoint healthy.
     args:
       url: http://api.default.svc.cluster.local/readyz
   - name: Fetch latency debug endpoint
+    kind: check
     tool: fetch_json
+    required: false
+    timeout: 6s
+    retries: 1
+    recommendation_on_fail: Enable latency diagnostics endpoint.
+    recommendation_on_pass: Correlate with upstream dependency timing.
     args:
       url: http://api.default.svc.cluster.local/debug/latency

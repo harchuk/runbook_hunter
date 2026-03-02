@@ -41,6 +41,8 @@ auth:
 
 secrets:
   settingsCryptoKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+  gitopsToken: ""
+  awxToken: ""
 
 config:
   server:
@@ -92,6 +94,24 @@ config:
     mattermost: []
   routing:
     rules: []
+  closure:
+    policy: auto+manual
+    autoCloseConsecutive: 2
+  gitops:
+    enabled: true
+    mode: strict
+    repoUrl: https://github.com/harchuk/runbook_hunter
+    baseBranch: main
+    basePath: .
+    commitSignoff: true
+    provider: github
+    tokenSecretRef: runbook-hunter-gitops-token
+    token: ""
+  awx:
+    enabled: false
+    url: ""
+    requestTimeout: 20s
+    defaultInventoryId: 0
 
 serviceAccount:
   create: true

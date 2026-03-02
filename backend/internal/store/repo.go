@@ -106,3 +106,14 @@ func (r *Repository) Ping(ctx context.Context) error {
 func (r *Repository) EnsureLocalSchema() error {
 	return AutoMigrate(r.db)
 }
+
+func (r *Repository) Close() error {
+	sqlDB, err := r.db.DB()
+	if err != nil {
+		return err
+	}
+	if sqlDB == nil {
+		return fmt.Errorf("sql db unavailable")
+	}
+	return sqlDB.Close()
+}

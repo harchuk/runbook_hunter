@@ -1,17 +1,37 @@
+schemaVersion: v2
 name: DB pool exhausted
 description: Check DB service and application DB-related status.
 match:
   alertname: DBPoolExhausted
 steps:
   - name: DB service DNS
+    kind: check
     tool: dns_lookup
+    required: true
+    timeout: 5s
+    retries: 1
+    recommendation_on_fail: Restore postgres service discovery and endpoints.
+    recommendation_on_pass: DNS for DB service is healthy.
     args:
       host: postgres.default.svc.cluster.local
   - name: DB TCP connectivity
+    kind: check
     tool: tcp_check
+    required: true
+    timeout: 5s
+    retries: 1
+    recommendation_on_fail: Validate network policies and pg listener.
+    recommendation_on_pass: TCP connectivity is reachable.
     args:
       address: postgres.default.svc.cluster.local:5432
-  - name: App DB diagnostics
-    tool: fetch_json
-    args:
-      url: http://api.default.svc.cluster.local/debug/db
+  - name: Scale DB recovery playbook
+    kind: action
+    tool: ansible_awx_job
+    required: false
+    timeout: 20s
+    retries: 0
+    requires_approval: true
+    awx_template_id: 42
+    playbook_ref: runbooks/db/recover_pool.yml
+    recommendation_on_fail: Escalate to DBA and verify AWX credentials/policy.
+    recommendation_on_pass: Track AWX job output and confirm pool stabilization.

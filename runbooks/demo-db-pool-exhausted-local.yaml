@@ -1,17 +1,36 @@
+schemaVersion: v2
 name: Demo DB pool exhausted (local)
 description: Local DB diagnostics runbook using postgres service from docker-compose.
 match:
   alertname: DemoDBPoolExhausted
 steps:
   - name: Postgres DNS
+    kind: check
     tool: dns_lookup
+    required: true
+    timeout: 4s
+    retries: 1
+    recommendation_on_fail: postgres alias is not resolvable.
+    recommendation_on_pass: postgres hostname resolved.
     args:
       host: postgres
   - name: Postgres TCP connectivity
+    kind: check
     tool: tcp_check
+    required: true
+    timeout: 4s
+    retries: 1
+    recommendation_on_fail: postgres port 5432 is unreachable.
+    recommendation_on_pass: postgres TCP endpoint reachable.
     args:
       address: postgres:5432
   - name: API readiness JSON
+    kind: check
     tool: fetch_json
+    required: false
+    timeout: 4s
+    retries: 1
+    recommendation_on_fail: API readiness degraded.
+    recommendation_on_pass: API readiness is healthy.
     args:
       url: http://api:8080/readyz

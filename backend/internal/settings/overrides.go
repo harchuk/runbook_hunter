@@ -78,6 +78,18 @@ func (s *Service) PutOverrides(ctx context.Context, values map[string]any) error
 	return s.repo.SetOverride(ctx, globalOverrideKey, encryptedValue, true)
 }
 
+func (s *Service) IsGitOpsStrict(ctx context.Context) (bool, error) {
+	cfg, err := s.EffectiveConfig(ctx)
+	if err != nil {
+		return false, err
+	}
+	mode := strings.ToLower(strings.TrimSpace(cfg.GitOps.Mode))
+	if mode == "" {
+		mode = "strict"
+	}
+	return cfg.GitOps.Enabled && mode == "strict", nil
+}
+
 func (s *Service) EffectiveConfig(ctx context.Context) (config.Config, error) {
 	base := map[string]any{}
 	baseBlob, err := json.Marshal(s.baseCfg)

@@ -1,49 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchEffectiveSettings, fetchOverrides, saveOverrides } from '../lib/api';
-import ResetOverridesButton from './ResetOverridesButton';
-
-const PRESETS: Record<string, any> = {
-  'Demo Local Routing': {
-    routing: {
-      rules: [
-        {
-          name: 'local-telegram',
-          routeKey: 'local-telegram',
-          enabled: true,
-          priority: 10,
-          matchLabels: { env: 'local' },
-          destinations: ['tg-local']
-        }
-      ]
-    }
-  },
-  'Safe Limits': {
-    limits: {
-      stepTimeout: 8000000000,
-      dedupCooldown: 180000000000,
-      maxSteps: 3
-    },
-    security: {
-      requestTimeout: 10000000000,
-      retryCount: 2
-    }
-  },
-  'JWT Auth Mode': {
-    auth: {
-      mode: 'jwt',
-      jwtSecret: 'replace-in-secret-or-env'
-    }
-  }
-};
-
-function formatDurationNs(value: any): string {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return 'n/a';
-  const sec = Math.round(n / 1_000_000_000);
-  if (sec < 60) return `${sec}s`;
-  const min = Math.round(sec / 60);
-  return `${min}m`;
-}
+import { fetchEffectiveSettings, fetchOverrides, resetOverrides, saveOverrides } from '../lib/api';
 
 export default function SettingsTab() {
   const [effective, setEffective] = useState<any>(null);
@@ -60,7 +16,7 @@ export default function SettingsTab() {
   };
 
   useEffect(() => {
-    refresh().catch((e) => setMessage(e.message));
+    refresh().catch((e: any) => setMessage(e.message));
   }, []);
 
   const onSave = async () => {
@@ -68,8 +24,8 @@ export default function SettingsTab() {
     try {
       const parsed = JSON.parse(editor);
       await saveOverrides(parsed);
-      setMessage('Overrides saved. Effective config updated.');
       await refresh();
+      setMessage('Overrides saved. Precedence: UI overrides > ConfigMap defaults > built-in defaults.');
     } catch (e: any) {
       setMessage(e.message);
     } finally {
@@ -77,67 +33,73 @@ export default function SettingsTab() {
     }
   };
 
-  const applyPreset = (name: string) => {
-    setEditor(JSON.stringify(PRESETS[name], null, 2));
-    setMessage(`Preset loaded: ${name}. Review values before Save.`);
+  const onResetAll = async () => {
+    try {
+      await resetOverrides('all');
+      await refresh();
+      setMessage('All UI overrides were reset. Effective values now come from ConfigMap/defaults.');
+    } catch (e: any) {
+      setMessage(e.message);
+    }
   };
 
-  const destinations = {
-    tg: Number(effective?.destinations?.telegram?.length || 0),
-    mm: Number(effective?.destinations?.mattermost?.length || 0)
+  const onResetKeys = async () => {
+    const raw = prompt('Comma separated keys to reset (e.g. routing.rules,destinations.telegram)');
+    if (!raw) return;
+    const keys = raw.split(',').map((v) => v.trim()).filter(Boolean);
+    if (keys.length === 0) return;
+    try {
+      await resetOverrides('keys', keys);
+      await refresh();
+      setMessage('Selected keys were reset from UI overrides.');
+    } catch (e: any) {
+      setMessage(e.message);
+    }
   };
+
+  const strictMode = String(effective?.gitops?.mode || '').toLowerCase() === 'strict' && Boolean(effective?.gitops?.enabled);
 
   return (
-    <section className="panel">
-      <h2 style={{ marginTop: 0 }}>Settings</h2>
-      <p className="hint" style={{ marginTop: 0 }}>
-        Precedence: <strong>UI overrides</strong> {'>'} <strong>ConfigMap/Secret defaults</strong> {'>'}{' '}
-        <strong>built-in defaults</strong>
-      </p>
-
-      <div className="stats-inline">
-        <span className="mini-pill">Runbook mode: {effective?.runbooks?.mode || 'n/a'}</span>
-        <span className="mini-pill">Auth mode: {effective?.auth?.mode || 'n/a'}</span>
-        <span className="mini-pill">Dedup cooldown: {formatDurationNs(effective?.limits?.dedupCooldown)}</span>
-        <span className="mini-pill">Destinations: TG {destinations.tg} / MM {destinations.mm}</span>
+    <section className="panel stack-16">
+      <div className="section-head">
+        <div>
+          <h2 className="title">Settings</h2>
+          <p className="hint">Configuration precedence and override management with explicit reset paths.</p>
+        </div>
       </div>
 
+      {strictMode && (
+        <p className="security-note">
+          GitOps strict mode enabled: direct UI override writes are deprecated and blocked. Use Changes tab to open change requests.
+        </p>
+      )}
       {message && <p className="security-note">{message}</p>}
 
-      <div className="grid-settings">
-        <article className="panel panel-compact">
-          <h3 style={{ marginTop: 0 }}>Current Overrides</h3>
-          <p className="hint">Sensitive values are encrypted before DB write.</p>
-          <pre className="code-block">{JSON.stringify(overrides, null, 2)}</pre>
-          <ResetOverridesButton
-            onReset={async () => {
-              await refresh();
-            }}
-          />
-        </article>
-
-        <article className="panel panel-compact">
-          <h3 style={{ marginTop: 0 }}>Edit Overrides (JSON)</h3>
+      <div className="workspace-grid">
+        <div className="card stack-10">
+          <h3>UI Overrides</h3>
+          <p className="hint">Security notes: sensitive values are encrypted at rest in DB.</p>
+          <textarea className="textarea" value={editor} onChange={(e) => setEditor(e.target.value)} disabled={strictMode} />
           <div className="button-row">
-            {Object.keys(PRESETS).map((name) => (
-              <button key={name} className="btn" onClick={() => applyPreset(name)}>
-                {name}
-              </button>
-            ))}
-          </div>
-          <textarea className="textarea" value={editor} onChange={(e) => setEditor(e.target.value)} />
-          <div className="button-row" style={{ marginTop: 10 }}>
-            <button className="btn primary" onClick={onSave} disabled={saving}>
-              {saving ? 'Saving…' : 'Save Overrides'}
+            <button className="btn" disabled={saving || strictMode} onClick={onSave}>
+              {saving ? 'Saving…' : 'Save overrides'}
             </button>
+            <button className="btn" onClick={onResetAll} disabled={strictMode}>Reset all</button>
+            <button className="btn" onClick={onResetKeys} disabled={strictMode}>Reset keys</button>
           </div>
-        </article>
+        </div>
+
+        <div className="card stack-10">
+          <h3>Effective Settings</h3>
+          <p className="hint">Applied runtime view.</p>
+          <pre className="code-block">{JSON.stringify(effective, null, 2)}</pre>
+        </div>
       </div>
 
-      <article className="panel panel-compact" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Effective Settings</h3>
-        <pre className="code-block">{JSON.stringify(effective, null, 2)}</pre>
-      </article>
+      <details className="card">
+        <summary>Raw overrides JSON</summary>
+        <pre className="code-block">{JSON.stringify(overrides, null, 2)}</pre>
+      </details>
     </section>
   );
 }

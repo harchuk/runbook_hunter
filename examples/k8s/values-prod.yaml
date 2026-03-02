@@ -14,9 +14,17 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
 
 auth:
-  mode: basic
+  mode: oidc
   basicUser: admin
   basicPass: "__REPLACE_ME__"
+  oidc:
+    issuerUrl: https://keycloak.example.com/realms/runbook
+    clientId: runbook-hunter
+    groupsClaim: groups
+    usernameClaim: preferred_username
+    adminGroups:
+      - runbook-admins
+    allowBasicFallback: false
 
 secrets:
   settingsCryptoKey: "__BASE64_32BYTE_KEY__"
@@ -34,9 +42,17 @@ config:
     driver: postgres
     dsn: "__POSTGRES_DSN__"
   auth:
-    mode: basic
+    mode: oidc
     basicUser: admin
     basicPass: "__REPLACE_ME__"
+    oidc:
+      issuerUrl: https://keycloak.example.com/realms/runbook
+      clientId: runbook-hunter
+      groupsClaim: groups
+      usernameClaim: preferred_username
+      adminGroups:
+        - runbook-admins
+      allowBasicFallback: false
   security:
     egressAllowlist:
       - '*.svc.cluster.local'
@@ -94,3 +110,13 @@ config:
     url: "__AWX_URL__"
     requestTimeout: 20s
     defaultInventoryId: 0
+  access:
+    groupRules:
+      - group: noc-prod
+        services: [api, db]
+        envs: [prod]
+        severities: [critical, warning]
+      - group: noc-dev
+        services: [api]
+        envs: [dev, stage]
+        severities: [critical, warning, info]

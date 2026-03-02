@@ -14,6 +14,14 @@ auth:
   basicUser: admin
   basicPass: change-me
   jwtSecret: change-me
+  oidc:
+    issuerUrl: http://keycloak:8080/realms/runbook
+    clientId: runbook-hunter
+    groupsClaim: groups
+    usernameClaim: preferred_username
+    adminGroups:
+      - runbook-admins
+    allowBasicFallback: true
 security:
   egressAllowlist:
     - localhost
@@ -65,3 +73,9 @@ awx:
   url: ""
   requestTimeout: 20s
   defaultInventoryId: 0
+access:
+  groupRules:
+    - group: noc-prod
+      services: [api, db]
+      envs: [prod]
+      severities: [critical, warning]

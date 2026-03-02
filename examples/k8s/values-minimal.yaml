@@ -15,6 +15,14 @@ auth:
   mode: basic
   basicUser: admin
   basicPass: change-me
+  oidc:
+    issuerUrl: https://keycloak.example.com/realms/runbook
+    clientId: runbook-hunter
+    groupsClaim: groups
+    usernameClaim: preferred_username
+    adminGroups:
+      - runbook-admins
+    allowBasicFallback: true
 
 secrets:
   settingsCryptoKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
@@ -27,6 +35,14 @@ config:
     mode: basic
     basicUser: admin
     basicPass: change-me
+    oidc:
+      issuerUrl: https://keycloak.example.com/realms/runbook
+      clientId: runbook-hunter
+      groupsClaim: groups
+      usernameClaim: preferred_username
+      adminGroups:
+        - runbook-admins
+      allowBasicFallback: true
   runbooks:
     mode: file
     path: /runbooks
@@ -65,3 +81,9 @@ config:
     url: ""
     requestTimeout: 20s
     defaultInventoryId: 0
+  access:
+    groupRules:
+      - group: noc-prod
+        services: [api, db]
+        envs: [prod]
+        severities: [critical, warning]

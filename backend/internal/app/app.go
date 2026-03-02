@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 
+	"github.com/runbook-hunter/runbook-hunter/backend/internal/authn"
+	"github.com/runbook-hunter/runbook-hunter/backend/internal/authz"
 	"github.com/runbook-hunter/runbook-hunter/backend/internal/config"
 	"github.com/runbook-hunter/runbook-hunter/backend/internal/obs"
 	"github.com/runbook-hunter/runbook-hunter/backend/internal/reporter"
@@ -20,6 +23,8 @@ type App struct {
 	Repo     *store.Repository
 	Settings *settings.Service
 	Router   *router.Engine
+	AuthN    *authn.Service
+	Access   *authz.Engine
 	Metrics  *obs.Metrics
 	Logger   zerolog.Logger
 	Worker   *worker.Service
@@ -45,6 +50,11 @@ func New(cfg config.Config, logger zerolog.Logger) (*App, error) {
 	reg := prometheus.DefaultRegisterer
 	metrics := obs.NewMetrics(reg)
 	routerEngine := router.New()
+	authnService, err := authn.NewService(context.Background(), cfg.Auth)
+	if err != nil {
+		return nil, fmt.Errorf("init auth service: %w", err)
+	}
+	accessEngine := authz.NewEngine(cfg.Access)
 
 	workerSvc := &worker.Service{
 		Repo:       repo,
@@ -61,6 +71,8 @@ func New(cfg config.Config, logger zerolog.Logger) (*App, error) {
 		Repo:     repo,
 		Settings: settingsSvc,
 		Router:   routerEngine,
+		AuthN:    authnService,
+		Access:   accessEngine,
 		Metrics:  metrics,
 		Logger:   logger,
 		Worker:   workerSvc,

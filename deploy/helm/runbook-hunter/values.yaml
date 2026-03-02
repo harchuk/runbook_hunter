@@ -38,6 +38,14 @@ auth:
   basicUser: admin
   basicPass: change-me
   jwtSecret: change-me
+  oidc:
+    issuerUrl: ""
+    clientId: "runbook-hunter"
+    groupsClaim: "groups"
+    usernameClaim: "preferred_username"
+    adminGroups:
+      - runbook-admins
+    allowBasicFallback: true
 
 secrets:
   settingsCryptoKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
@@ -61,6 +69,14 @@ config:
     basicUser: admin
     basicPass: change-me
     jwtSecret: change-me
+    oidc:
+      issuerUrl: ""
+      clientId: runbook-hunter
+      groupsClaim: groups
+      usernameClaim: preferred_username
+      adminGroups:
+        - runbook-admins
+      allowBasicFallback: true
   security:
     egressAllowlist:
       - localhost
@@ -112,6 +128,8 @@ config:
     url: ""
     requestTimeout: 20s
     defaultInventoryId: 0
+  access:
+    groupRules: []
 
 serviceAccount:
   create: true

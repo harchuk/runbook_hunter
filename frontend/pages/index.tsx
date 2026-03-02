@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import AlertsTab from '../components/AlertsTab';
-import AuthPanel from '../components/AuthPanel';
 import ChangesTab from '../components/ChangesTab';
 import IncidentsTab from '../components/IncidentsTab';
 import OverviewTab from '../components/OverviewTab';
@@ -13,7 +12,6 @@ type Tab = 'overview' | 'incidents' | 'alerts' | 'runbooks' | 'changes' | 'setti
 export default function Home() {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [tab, setTab] = useState<Tab>('overview');
-  const [authVersion, setAuthVersion] = useState(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -61,8 +59,6 @@ export default function Home() {
         </div>
       </section>
 
-      <AuthPanel onAuthChanged={() => setAuthVersion((value) => value + 1)} />
-
       <nav className="tabs" aria-label="Main tabs">
         {tabs.map((item) => (
           <button key={item.key} className={`tab-btn ${tab === item.key ? 'active' : ''}`} onClick={() => setTab(item.key)}>
@@ -71,12 +67,12 @@ export default function Home() {
         ))}
       </nav>
 
-      {tab === 'overview' && <OverviewTab key={`overview-${authVersion}`} />}
-      {tab === 'incidents' && <IncidentsTab key={`incidents-${authVersion}`} />}
-      {tab === 'alerts' && <AlertsTab key={`alerts-${authVersion}`} />}
-      {tab === 'runbooks' && <RunbooksTab key={`runbooks-${authVersion}`} />}
-      {tab === 'changes' && <ChangesTab key={`changes-${authVersion}`} />}
-      {tab === 'settings' && <SettingsTab key={`settings-${authVersion}`} />}
+      {tab === 'overview' && <OverviewTab />}
+      {tab === 'incidents' && <IncidentsTab />}
+      {tab === 'alerts' && <AlertsTab />}
+      {tab === 'runbooks' && <RunbooksTab />}
+      {tab === 'changes' && <ChangesTab />}
+      {tab === 'settings' && <SettingsTab />}
     </main>
   );
 }

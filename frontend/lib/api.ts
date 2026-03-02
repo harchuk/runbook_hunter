@@ -2,6 +2,8 @@ const API_BASE_ENV = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, ''
 const AUTH_MODE_KEY = 'rh_auth_mode';
 const AUTH_BASIC_KEY = 'rh_auth_basic';
 const AUTH_JWT_KEY = 'rh_auth_jwt';
+const DEFAULT_BASIC_USER = process.env.NEXT_PUBLIC_DEFAULT_BASIC_USER || 'admin';
+const DEFAULT_BASIC_PASS = process.env.NEXT_PUBLIC_DEFAULT_BASIC_PASS || 'change-me';
 
 type AuthMode = 'basic' | 'jwt';
 
@@ -19,22 +21,22 @@ function resolveApiBase(): string {
 }
 
 function getAuthHeader(): string | undefined {
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-  const mode = (window.sessionStorage.getItem(AUTH_MODE_KEY) as AuthMode | null) || 'basic';
+  const mode =
+    (typeof window !== 'undefined'
+      ? ((window.sessionStorage.getItem(AUTH_MODE_KEY) as AuthMode | null) || 'basic')
+      : 'basic');
   if (mode === 'jwt') {
-    const token = window.sessionStorage.getItem(AUTH_JWT_KEY);
+    const token = typeof window !== 'undefined' ? window.sessionStorage.getItem(AUTH_JWT_KEY) : '';
     if (!token) {
       return undefined;
     }
     return `Bearer ${token}`;
   }
-  const basic = window.sessionStorage.getItem(AUTH_BASIC_KEY);
-  if (!basic) {
-    return undefined;
+  const basic = typeof window !== 'undefined' ? window.sessionStorage.getItem(AUTH_BASIC_KEY) : null;
+  if (basic) {
+    return `Basic ${basic}`;
   }
-  return `Basic ${basic}`;
+  return `Basic ${encodeBase64(`${DEFAULT_BASIC_USER}:${DEFAULT_BASIC_PASS}`)}`;
 }
 
 function withAuth(headers?: Record<string, string>): Record<string, string> {
@@ -69,7 +71,7 @@ export function setBasicAuth(user: string, pass: string) {
   if (typeof window === 'undefined') {
     return;
   }
-  const encoded = window.btoa(`${user}:${pass}`);
+  const encoded = encodeBase64(`${user}:${pass}`);
   window.sessionStorage.setItem(AUTH_MODE_KEY, 'basic');
   window.sessionStorage.setItem(AUTH_BASIC_KEY, encoded);
   window.sessionStorage.removeItem(AUTH_JWT_KEY);
@@ -91,6 +93,13 @@ export function clearAuth() {
   window.sessionStorage.removeItem(AUTH_MODE_KEY);
   window.sessionStorage.removeItem(AUTH_BASIC_KEY);
   window.sessionStorage.removeItem(AUTH_JWT_KEY);
+}
+
+function encodeBase64(value: string): string {
+  if (typeof window !== 'undefined') {
+    return window.btoa(value);
+  }
+  return '';
 }
 
 export async function fetchIncidents() {

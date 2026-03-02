@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ type Config struct {
 	Closure      ClosureConfig      `yaml:"closure" json:"closure"`
 	GitOps       GitOpsConfig       `yaml:"gitops" json:"gitops"`
 	AWX          AWXConfig          `yaml:"awx" json:"awx"`
+	Access       AccessConfig       `yaml:"access" json:"access"`
 }
 
 type ServerConfig struct {
@@ -44,10 +46,20 @@ type DatabaseConfig struct {
 }
 
 type AuthConfig struct {
-	Mode      string `yaml:"mode" json:"mode"`
-	BasicUser string `yaml:"basicUser" json:"basicUser"`
-	BasicPass string `yaml:"basicPass" json:"basicPass"`
-	JWTSecret string `yaml:"jwtSecret" json:"jwtSecret"`
+	Mode      string     `yaml:"mode" json:"mode"`
+	BasicUser string     `yaml:"basicUser" json:"basicUser"`
+	BasicPass string     `yaml:"basicPass" json:"basicPass"`
+	JWTSecret string     `yaml:"jwtSecret" json:"jwtSecret"`
+	OIDC      OIDCConfig `yaml:"oidc" json:"oidc"`
+}
+
+type OIDCConfig struct {
+	IssuerURL          string   `yaml:"issuerUrl" json:"issuerUrl"`
+	ClientID           string   `yaml:"clientId" json:"clientId"`
+	GroupsClaim        string   `yaml:"groupsClaim" json:"groupsClaim"`
+	UsernameClaim      string   `yaml:"usernameClaim" json:"usernameClaim"`
+	AdminGroups        []string `yaml:"adminGroups" json:"adminGroups"`
+	AllowBasicFallback bool     `yaml:"allowBasicFallback" json:"allowBasicFallback"`
 }
 
 type SecurityConfig struct {
@@ -144,6 +156,18 @@ type AWXConfig struct {
 	DefaultInventoryID int64         `yaml:"defaultInventoryId" json:"defaultInventoryId"`
 }
 
+type AccessConfig struct {
+	GroupRules []GroupRule `yaml:"groupRules" json:"groupRules"`
+}
+
+type GroupRule struct {
+	Group      string   `yaml:"group" json:"group"`
+	Services   []string `yaml:"services" json:"services"`
+	Envs       []string `yaml:"envs" json:"envs"`
+	Severities []string `yaml:"severities" json:"severities"`
+	AlertNames []string `yaml:"alertNames" json:"alertNames"`
+}
+
 func BuiltInDefaults() Config {
 	return Config{
 		Server: ServerConfig{
@@ -161,7 +185,15 @@ func BuiltInDefaults() Config {
 			DSN:    "postgres://postgres:postgres@localhost:5432/runbook_hunter?sslmode=disable",
 		},
 		Auth: AuthConfig{
-			Mode: "basic",
+			Mode:      "basic",
+			BasicUser: "admin",
+			BasicPass: "change-me",
+			OIDC: OIDCConfig{
+				GroupsClaim:        "groups",
+				UsernameClaim:      "preferred_username",
+				AdminGroups:        []string{"runbook-admins"},
+				AllowBasicFallback: true,
+			},
 		},
 		Security: SecurityConfig{
 			EgressAllowlist:      []string{"localhost", "127.0.0.1", "api", "postgres", "*.svc.cluster.local"},
@@ -202,6 +234,9 @@ func BuiltInDefaults() Config {
 			Enabled:        false,
 			RequestTimeout: 20 * time.Second,
 		},
+		Access: AccessConfig{
+			GroupRules: []GroupRule{},
+		},
 	}
 }
 
@@ -233,6 +268,10 @@ func applyEnvOverrides(cfg *Config) {
 		"RH_AUTH_BASIC_USER":     &cfg.Auth.BasicUser,
 		"RH_AUTH_BASIC_PASS":     &cfg.Auth.BasicPass,
 		"RH_AUTH_JWT_SECRET":     &cfg.Auth.JWTSecret,
+		"RH_AUTH_OIDC_ISSUER":    &cfg.Auth.OIDC.IssuerURL,
+		"RH_AUTH_OIDC_CLIENT_ID": &cfg.Auth.OIDC.ClientID,
+		"RH_AUTH_OIDC_GROUPS":    &cfg.Auth.OIDC.GroupsClaim,
+		"RH_AUTH_OIDC_USERNAME":  &cfg.Auth.OIDC.UsernameClaim,
 		"RH_RUNBOOK_MODE":        &cfg.Runbooks.Mode,
 		"RH_RUNBOOK_PATH":        &cfg.Runbooks.Path,
 		"RH_SETTINGS_CRYPTO_KEY": &cfg.Security.SettingsCryptoKeyB64,
@@ -245,17 +284,41 @@ func applyEnvOverrides(cfg *Config) {
 			*ptr = value
 		}
 	}
+	if value := strings.TrimSpace(os.Getenv("RH_AUTH_OIDC_ADMIN_GROUPS")); value != "" {
+		cfg.Auth.OIDC.AdminGroups = splitCSV(value)
+	}
+	if value := strings.TrimSpace(os.Getenv("RH_AUTH_OIDC_ALLOW_BASIC_FALLBACK")); value != "" {
+		parsed, err := strconv.ParseBool(value)
+		if err == nil {
+			cfg.Auth.OIDC.AllowBasicFallback = parsed
+		}
+	}
 }
 
 func (c Config) Validate() error {
 	if c.Database.Driver != "postgres" && c.Database.Driver != "sqlite" {
 		return errors.New("database.driver must be postgres or sqlite")
 	}
-	if c.Auth.Mode == "basic" && (strings.TrimSpace(c.Auth.BasicUser) == "" || strings.TrimSpace(c.Auth.BasicPass) == "") {
+	mode := strings.ToLower(strings.TrimSpace(c.Auth.Mode))
+	if mode != "basic" && mode != "jwt" && mode != "oidc" {
+		return errors.New("auth.mode must be basic, jwt or oidc")
+	}
+	if mode == "basic" && (strings.TrimSpace(c.Auth.BasicUser) == "" || strings.TrimSpace(c.Auth.BasicPass) == "") {
 		return errors.New("auth.basic user/password required in basic mode")
 	}
-	if c.Auth.Mode == "jwt" && strings.TrimSpace(c.Auth.JWTSecret) == "" {
+	if mode == "jwt" && strings.TrimSpace(c.Auth.JWTSecret) == "" {
 		return errors.New("auth.jwt secret required in jwt mode")
+	}
+	if mode == "oidc" {
+		if strings.TrimSpace(c.Auth.OIDC.IssuerURL) == "" {
+			return errors.New("auth.oidc.issuerUrl required in oidc mode")
+		}
+		if strings.TrimSpace(c.Auth.OIDC.ClientID) == "" {
+			return errors.New("auth.oidc.clientId required in oidc mode")
+		}
+		if strings.TrimSpace(c.Auth.OIDC.GroupsClaim) == "" {
+			return errors.New("auth.oidc.groupsClaim required in oidc mode")
+		}
 	}
 	if c.Runbooks.Mode != "file" && c.Runbooks.Mode != "db" {
 		return errors.New("runbooks.mode must be file or db")
@@ -263,11 +326,11 @@ func (c Config) Validate() error {
 	if c.Limits.MaxSteps <= 0 {
 		return errors.New("limits.maxSteps must be > 0")
 	}
-	mode := strings.ToLower(strings.TrimSpace(c.GitOps.Mode))
-	if mode == "" {
-		mode = "strict"
+	gitopsMode := strings.ToLower(strings.TrimSpace(c.GitOps.Mode))
+	if gitopsMode == "" {
+		gitopsMode = "strict"
 	}
-	if mode != "strict" && mode != "hybrid" && mode != "disabled" {
+	if gitopsMode != "strict" && gitopsMode != "hybrid" && gitopsMode != "disabled" {
 		return errors.New("gitops.mode must be strict, hybrid or disabled")
 	}
 	provider := strings.ToLower(strings.TrimSpace(c.GitOps.Provider))
@@ -291,4 +354,17 @@ func (c Config) Validate() error {
 		return errors.New("awx.requestTimeout must be > 0")
 	}
 	return nil
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	return out
 }

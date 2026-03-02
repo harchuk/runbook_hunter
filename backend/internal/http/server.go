@@ -12,11 +12,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gorm.io/gorm"
 
 	"github.com/runbook-hunter/runbook-hunter/backend/internal/app"
+	"github.com/runbook-hunter/runbook-hunter/backend/internal/authn"
 	"github.com/runbook-hunter/runbook-hunter/backend/internal/correlation"
 	"github.com/runbook-hunter/runbook-hunter/backend/internal/ingest"
 	"github.com/runbook-hunter/runbook-hunter/backend/internal/obs"
@@ -146,15 +146,24 @@ func (h *handler) postAlertmanager(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getAlerts(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	alerts, err := h.app.Repo.ListAlerts(r.Context(), 500)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, mapSignalsResponse(alerts))
+	filtered := make([]store.Signal, 0, len(alerts))
+	for _, alert := range alerts {
+		if !h.app.Access.CanViewSignal(principal, alert) {
+			continue
+		}
+		filtered = append(filtered, alert)
+	}
+	writeJSON(w, http.StatusOK, mapSignalsResponse(filtered))
 }
 
 func (h *handler) getAlert(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -169,10 +178,15 @@ func (h *handler) getAlert(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	if !h.app.Access.CanViewSignal(principal, alert) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
 	writeJSON(w, http.StatusOK, mapSignalResponse(alert))
 }
 
 func (h *handler) getIncidents(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	incidents, err := h.app.Repo.ListIncidents(r.Context(), 200)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -180,6 +194,9 @@ func (h *handler) getIncidents(w http.ResponseWriter, r *http.Request) {
 	}
 	response := make([]map[string]any, 0, len(incidents))
 	for _, item := range incidents {
+		if !h.app.Access.CanViewIncident(principal, item.Incident) {
+			continue
+		}
 		response = append(response, map[string]any{
 			"id":            item.ID,
 			"createdAt":     item.CreatedAt,
@@ -202,6 +219,7 @@ func (h *handler) getIncidents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getIncident(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -216,6 +234,10 @@ func (h *handler) getIncident(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	if !h.app.Access.CanViewIncident(principal, incident.Incident) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
 	response := map[string]any{
 		"incident":   mapIncidentResponse(incident.Incident),
 		"steps":      incident.Steps,
@@ -226,9 +248,23 @@ func (h *handler) getIncident(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getIncidentAlerts(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	incident, err := h.app.Repo.GetIncidentByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !h.app.Access.CanViewIncident(principal, incident) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 	alerts, err := h.app.Repo.ListIncidentAlerts(r.Context(), id)
@@ -236,13 +272,34 @@ func (h *handler) getIncidentAlerts(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, mapSignalsResponse(alerts))
+	filtered := make([]store.Signal, 0, len(alerts))
+	for _, alert := range alerts {
+		if !h.app.Access.CanViewSignal(principal, alert) {
+			continue
+		}
+		filtered = append(filtered, alert)
+	}
+	writeJSON(w, http.StatusOK, mapSignalsResponse(filtered))
 }
 
 func (h *handler) getIncidentRunbookExecutions(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	incident, err := h.app.Repo.GetIncidentByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !h.app.Access.CanViewIncident(principal, incident) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 	execs, err := h.app.Repo.ListRunbookExecutions(r.Context(), id)
@@ -254,9 +311,23 @@ func (h *handler) getIncidentRunbookExecutions(w http.ResponseWriter, r *http.Re
 }
 
 func (h *handler) getIncidentClosureCriteria(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	incident, err := h.app.Repo.GetIncidentByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !h.app.Access.CanViewIncident(principal, incident) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 	criteria, err := h.app.Repo.GetIncidentClosureCriteria(r.Context(), id)
@@ -268,9 +339,23 @@ func (h *handler) getIncidentClosureCriteria(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *handler) getIncidentEvents(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	incident, err := h.app.Repo.GetIncidentByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !h.app.Access.CanViewIncident(principal, incident) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 	events, err := h.app.Repo.ListIncidentEvents(r.Context(), id, 300)
@@ -282,9 +367,27 @@ func (h *handler) getIncidentEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) postUpdateNow(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	incident, err := h.app.Repo.GetIncidentByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if !h.app.Access.CanViewIncident(principal, incident) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
 		return
 	}
 	var body struct {
@@ -300,6 +403,11 @@ func (h *handler) postUpdateNow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) postCloseIncident(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -320,6 +428,11 @@ func (h *handler) postCloseIncident(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) postReopenIncident(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -340,6 +453,11 @@ func (h *handler) postReopenIncident(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) postRerunRunbook(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -357,6 +475,11 @@ func (h *handler) postRerunRunbook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getSettingsEffective(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	cfg, err := h.app.Settings.EffectiveConfig(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -366,6 +489,11 @@ func (h *handler) getSettingsEffective(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getSettingsOverrides(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	overrides, err := h.app.Settings.GetOverrides(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -375,6 +503,11 @@ func (h *handler) getSettingsOverrides(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) putSettingsOverrides(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	strict, err := h.app.Settings.IsGitOpsStrict(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -398,6 +531,11 @@ func (h *handler) putSettingsOverrides(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) resetSettingsOverrides(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	strict, err := h.app.Settings.IsGitOpsStrict(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -435,6 +573,11 @@ func (h *handler) resetSettingsOverrides(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *handler) getApprovals(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	rows, err := h.app.Repo.ListPendingApprovals(r.Context(), 200)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -444,6 +587,11 @@ func (h *handler) getApprovals(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) approveRequest(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -457,6 +605,11 @@ func (h *handler) approveRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) rejectRequest(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -477,6 +630,11 @@ func (h *handler) rejectRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) createGitOpsChange(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	var payload struct {
 		ChangeType string         `json:"change_type"`
 		Title      string         `json:"title"`
@@ -505,6 +663,11 @@ func (h *handler) createGitOpsChange(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) listGitOpsChanges(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	rows, err := h.app.Repo.ListGitOpsChanges(r.Context(), 200)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -514,6 +677,11 @@ func (h *handler) listGitOpsChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getGitOpsChange(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	if !h.app.Access.CanWrite(principal) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin role required"})
+		return
+	}
 	id, err := parseID(chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -534,34 +702,15 @@ func (h *handler) getGitOpsChange(w http.ResponseWriter, r *http.Request) {
 func authMiddleware(a *app.App) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mode := strings.ToLower(a.Config.Auth.Mode)
-			switch mode {
-			case "jwt":
-				authorization := strings.TrimSpace(r.Header.Get("Authorization"))
-				if !strings.HasPrefix(authorization, "Bearer ") {
-					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
-					return
-				}
-				tokenString := strings.TrimPrefix(authorization, "Bearer ")
-				_, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
-					if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-						return nil, errors.New("unexpected signing method")
-					}
-					return []byte(a.Config.Auth.JWTSecret), nil
-				})
-				if err != nil {
-					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
-					return
-				}
-			default:
-				user, pass, ok := r.BasicAuth()
-				if !ok || user != a.Config.Auth.BasicUser || pass != a.Config.Auth.BasicPass {
+			principal, err := a.AuthN.AuthenticateRequest(r)
+			if err != nil {
+				if strings.ToLower(strings.TrimSpace(a.Config.Auth.Mode)) == "basic" {
 					w.Header().Set("WWW-Authenticate", `Basic realm="runbook-hunter"`)
-					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-					return
 				}
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+				return
 			}
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r.WithContext(authn.WithPrincipal(r.Context(), principal)))
 		})
 	}
 }
@@ -650,4 +799,12 @@ func decodeJSONAny(raw []byte) any {
 		return map[string]any{}
 	}
 	return out
+}
+
+func principalFromRequest(r *http.Request) authn.Principal {
+	principal, ok := authn.PrincipalFromContext(r.Context())
+	if !ok {
+		return authn.Principal{Subject: "anonymous", Username: "anonymous", IsAdmin: false}
+	}
+	return principal
 }

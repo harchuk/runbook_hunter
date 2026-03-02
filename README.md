@@ -9,6 +9,7 @@ Security notes:
 
 ## Features (MVP)
 - Go backend (`api` + `worker` modes) and Next.js admin UI.
+- Default break-glass admin account (`admin` / `change-me`) for fresh installs.
 - Alertmanager webhook ingest: `POST /api/alertmanager`.
 - Separate `Alerts` and `Incidents` operational views.
 - Incident-centric runbook lifecycle: one active execution per incident.
@@ -21,6 +22,8 @@ Security notes:
 - Action step integration: `ansible_awx_job` with mandatory approval path.
 - Destination routing + per-destination dedup (`content_hash + cooldown`).
 - GitOps-first change requests API (`/api/gitops/changes`) with strict mode support.
+- Auth modes: `basic`, `jwt`, `oidc` (Keycloak OIDC bearer token verification).
+- Group-based visibility rules (LDAP/Keycloak groups -> incident/alert scopes).
 - Health and observability: `/healthz`, `/readyz`, `/metrics`.
 
 ## Architecture
@@ -99,6 +102,27 @@ helm install runbook-hunter ./deploy/helm/runbook-hunter -f examples/k8s/values-
 
 ## Configure Alertmanager
 Use [examples/alertmanager/alertmanager.yml](/Users/mharchuk/Documents/awsapp/examples/alertmanager/alertmanager.yml) receiver webhook pointing to service/ingress `/api/alertmanager`.
+
+## Auth and Access Control
+- `basic`: uses `auth.basicUser` / `auth.basicPass` (default `admin` / `change-me`).
+- `jwt`: validates HMAC token with `auth.jwtSecret`.
+- `oidc`: validates Keycloak-issued bearer token via issuer discovery + JWKS.
+
+OIDC config keys:
+- `auth.oidc.issuerUrl`
+- `auth.oidc.clientId`
+- `auth.oidc.groupsClaim` (for LDAP groups mapped into token)
+- `auth.oidc.usernameClaim`
+- `auth.oidc.adminGroups`
+- `auth.oidc.allowBasicFallback`
+
+Group rules (GitOps-friendly YAML):
+- `access.groupRules[]` with selectors:
+- `group`, `services`, `envs`, `severities`, `alertNames`
+
+Security notes:
+- Rotate default admin password immediately in production.
+- Keep OIDC in `allowBasicFallback: false` for strict SSO-only production mode.
 
 ## Settings Precedence and Overrides
 Effective settings are merged in this order:

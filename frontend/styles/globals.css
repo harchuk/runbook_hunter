@@ -279,11 +279,11 @@ a {
   vertical-align: top;
 }
 
-.table tbody tr {
+.table tbody tr.clickable {
   cursor: pointer;
 }
 
-.table tbody tr:hover {
+.table tbody tr.clickable:hover {
   background: color-mix(in srgb, var(--surface-solid) 92%, transparent);
 }
 
@@ -498,6 +498,12 @@ a {
 
 .btn:hover {
   border-color: color-mix(in srgb, var(--accent) 64%, var(--line));
+}
+
+.link-btn {
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 12px;
 }
 
 .code-block {

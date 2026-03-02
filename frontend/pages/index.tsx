@@ -14,6 +14,7 @@ export default function Home() {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [tab, setTab] = useState<Tab>('overview');
   const [authVersion, setAuthVersion] = useState(0);
+  const [incidentFocusID, setIncidentFocusID] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -73,8 +74,22 @@ export default function Home() {
       </nav>
 
       {tab === 'overview' && <OverviewTab key={`overview-${authVersion}`} />}
-      {tab === 'incidents' && <IncidentsTab key={`incidents-${authVersion}`} />}
-      {tab === 'alerts' && <AlertsTab key={`alerts-${authVersion}`} />}
+      {tab === 'incidents' && (
+        <IncidentsTab
+          key={`incidents-${authVersion}`}
+          focusIncidentID={incidentFocusID}
+          onFocusHandled={() => setIncidentFocusID(null)}
+        />
+      )}
+      {tab === 'alerts' && (
+        <AlertsTab
+          key={`alerts-${authVersion}`}
+          onOpenIncident={(id) => {
+            setIncidentFocusID(id);
+            setTab('incidents');
+          }}
+        />
+      )}
       {tab === 'runbooks' && <RunbooksTab key={`runbooks-${authVersion}`} />}
       {tab === 'changes' && <ChangesTab key={`changes-${authVersion}`} />}
       {tab === 'settings' && <SettingsTab key={`settings-${authVersion}`} />}

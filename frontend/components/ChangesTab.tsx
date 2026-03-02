@@ -81,7 +81,13 @@ export default function ChangesTab() {
                 <td>{row.changeType ?? row.ChangeType}</td>
                 <td>{row.title ?? row.Title}</td>
                 <td><span className={`badge state-${String(row.status ?? row.Status ?? '').replace(/_/g, '-')}`}>{row.status ?? row.Status}</span></td>
-                <td>{(row.prUrl ?? row.PRURL) || '-'}</td>
+                <td>
+                  {(row.prUrl ?? row.PRURL) ? (
+                    <a href={row.prUrl ?? row.PRURL} target="_blank" rel="noreferrer">Open PR</a>
+                  ) : (
+                    '-'
+                  )}
+                </td>
                 <td>{(row.driftStatus ?? row.DriftStatus) || '-'}</td>
               </tr>
             ))}

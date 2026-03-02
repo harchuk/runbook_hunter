@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchAlerts } from '../lib/api';
 
+type Props = {
+  onOpenIncident?: (incidentID: number) => void;
+};
+
 type AlertRow = {
   id: number;
   incidentId: number;
@@ -40,7 +44,7 @@ function normalize(raw: any): AlertRow {
   };
 }
 
-export default function AlertsTab() {
+export default function AlertsTab({ onOpenIncident }: Props) {
   const [rows, setRows] = useState<AlertRow[]>([]);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
@@ -102,7 +106,13 @@ export default function AlertsTab() {
             {filtered.map((row) => (
               <tr key={row.id}>
                 <td>{row.id}</td>
-                <td>#{row.incidentId}</td>
+                <td>
+                  {row.incidentId > 0 ? (
+                    <button className="btn link-btn" onClick={() => onOpenIncident?.(row.incidentId)}>#{row.incidentId}</button>
+                  ) : (
+                    '-'
+                  )}
+                </td>
                 <td>{row.alertName}</td>
                 <td><span className={`badge state-${row.status}`}>{row.status}</span></td>
                 <td>{row.service}/{row.env}</td>

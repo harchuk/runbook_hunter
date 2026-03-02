@@ -3,8 +3,6 @@ const AUTH_MODE_KEY = 'rh_auth_mode';
 const AUTH_BASIC_KEY = 'rh_auth_basic';
 const AUTH_JWT_KEY = 'rh_auth_jwt';
 const AUTH_DISABLED_KEY = 'rh_auth_disabled';
-const DEFAULT_BASIC_USER = process.env.NEXT_PUBLIC_DEFAULT_BASIC_USER || 'admin';
-const DEFAULT_BASIC_PASS = process.env.NEXT_PUBLIC_DEFAULT_BASIC_PASS || 'change-me';
 
 export type AuthMode = 'basic' | 'jwt' | 'oidc';
 
@@ -40,7 +38,7 @@ function getAuthHeader(): string | undefined {
   if (basic) {
     return `Basic ${basic}`;
   }
-  return `Basic ${encodeBase64(`${DEFAULT_BASIC_USER}:${DEFAULT_BASIC_PASS}`)}`;
+  return undefined;
 }
 
 function withAuth(headers?: Record<string, string>): Record<string, string> {
@@ -123,6 +121,17 @@ export function getStoredAuthMode(): AuthMode {
   return 'basic';
 }
 
+export function hasStoredAuth(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const mode = getStoredAuthMode();
+  if (mode === 'jwt' || mode === 'oidc') {
+    return Boolean(window.sessionStorage.getItem(AUTH_JWT_KEY));
+  }
+  return Boolean(window.sessionStorage.getItem(AUTH_BASIC_KEY));
+}
+
 function encodeBase64(value: string): string {
   if (typeof window !== 'undefined') {
     return window.btoa(value);
@@ -132,6 +141,10 @@ function encodeBase64(value: string): string {
 
 export async function fetchIncidents() {
   return parseJSON<any[]>(await request('/api/incidents'));
+}
+
+export async function fetchSession() {
+  return parseJSON<any>(await request('/api/me'));
 }
 
 export async function fetchIncident(id: number) {

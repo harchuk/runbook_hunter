@@ -9,6 +9,11 @@ import {
   rerunIncidentRunbook
 } from '../lib/api';
 
+type Props = {
+  focusIncidentID?: number | null;
+  onFocusHandled?: () => void;
+};
+
 type IncidentRow = {
   id: number;
   alertName: string;
@@ -70,7 +75,7 @@ function formatAgo(value: string): string {
   return `${Math.round(h / 24)}d`;
 }
 
-export default function IncidentsTab() {
+export default function IncidentsTab({ focusIncidentID, onFocusHandled }: Props) {
   const [incidents, setIncidents] = useState<IncidentRow[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<any>(null);
@@ -101,6 +106,12 @@ export default function IncidentsTab() {
     if (!selectedId) return;
     loadDetail(selectedId).catch((e: any) => setError(e.message));
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!focusIncidentID || focusIncidentID <= 0) return;
+    setSelectedId(focusIncidentID);
+    onFocusHandled?.();
+  }, [focusIncidentID, onFocusHandled]);
 
   const filtered = useMemo(() => {
     return incidents
@@ -139,6 +150,23 @@ export default function IncidentsTab() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const askReason = (action: 'close' | 'reopen'): string | null => {
+    if (typeof window === 'undefined') {
+      return action;
+    }
+    const initial = action === 'close' ? 'manual close from UI' : 'manual reopen from UI';
+    const value = window.prompt(`Reason to ${action} incident:`, initial);
+    if (value === null) {
+      return null;
+    }
+    const reason = value.trim();
+    if (!reason) {
+      setError('Reason is required.');
+      return null;
+    }
+    return reason;
   };
 
   return (
@@ -192,7 +220,11 @@ export default function IncidentsTab() {
               </thead>
               <tbody>
                 {filtered.map((it) => (
-                  <tr key={it.id} className={selectedId === it.id ? 'active' : ''} onClick={() => setSelectedId(it.id)}>
+                  <tr
+                    key={it.id}
+                    className={`clickable ${selectedId === it.id ? 'active' : ''}`}
+                    onClick={() => setSelectedId(it.id)}
+                  >
                     <td>#{it.id}</td>
                     <td>
                       <strong>{it.alertName}</strong>
@@ -225,8 +257,28 @@ export default function IncidentsTab() {
                 <div className="button-row">
                   <button className="btn" disabled={busy} onClick={() => runAction(() => postUpdateNow(selectedIncident.id, []))}>Post update</button>
                   <button className="btn" disabled={busy} onClick={() => runAction(() => rerunIncidentRunbook(selectedIncident.id))}>Rerun runbook</button>
-                  <button className="btn" disabled={busy} onClick={() => runAction(() => closeIncident(selectedIncident.id, 'manual close from UI'))}>Close</button>
-                  <button className="btn" disabled={busy} onClick={() => runAction(() => reopenIncident(selectedIncident.id, 'manual reopen from UI'))}>Reopen</button>
+                  <button
+                    className="btn"
+                    disabled={busy}
+                    onClick={() => {
+                      const reason = askReason('close');
+                      if (!reason) return;
+                      runAction(() => closeIncident(selectedIncident.id, reason));
+                    }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    className="btn"
+                    disabled={busy}
+                    onClick={() => {
+                      const reason = askReason('reopen');
+                      if (!reason) return;
+                      runAction(() => reopenIncident(selectedIncident.id, reason));
+                    }}
+                  >
+                    Reopen
+                  </button>
                 </div>
               </section>
 

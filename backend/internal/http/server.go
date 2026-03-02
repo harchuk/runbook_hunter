@@ -52,6 +52,8 @@ func NewServer(a *app.App) *Server {
 	r.Route("/api", func(api chi.Router) {
 		api.Use(authMiddleware(a))
 
+		api.Get("/me", h.getCurrentPrincipal)
+
 		api.Get("/alerts", h.getAlerts)
 		api.Get("/alerts/{id}", h.getAlert)
 
@@ -143,6 +145,17 @@ func (h *handler) postAlertmanager(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{"processed": processed, "total": len(payload.Alerts)})
+}
+
+func (h *handler) getCurrentPrincipal(w http.ResponseWriter, r *http.Request) {
+	principal := principalFromRequest(r)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"subject":    principal.Subject,
+		"username":   principal.Username,
+		"groups":     principal.Groups,
+		"isAdmin":    principal.IsAdmin,
+		"authMethod": principal.AuthMethod,
+	})
 }
 
 func (h *handler) getAlerts(w http.ResponseWriter, r *http.Request) {
@@ -485,7 +498,7 @@ func (h *handler) getSettingsEffective(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, cfg)
+	writeJSON(w, http.StatusOK, redactSensitiveMap(structToMap(cfg)))
 }
 
 func (h *handler) getSettingsOverrides(w http.ResponseWriter, r *http.Request) {
@@ -499,7 +512,7 @@ func (h *handler) getSettingsOverrides(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, overrides)
+	writeJSON(w, http.StatusOK, redactSensitiveMap(overrides))
 }
 
 func (h *handler) putSettingsOverrides(w http.ResponseWriter, r *http.Request) {
@@ -807,4 +820,67 @@ func principalFromRequest(r *http.Request) authn.Principal {
 		return authn.Principal{Subject: "anonymous", Username: "anonymous", IsAdmin: false}
 	}
 	return principal
+}
+
+func structToMap(value any) map[string]any {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return map[string]any{}
+	}
+	out := map[string]any{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return map[string]any{}
+	}
+	return out
+}
+
+func redactSensitiveMap(input map[string]any) map[string]any {
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		if isSensitiveKey(key) {
+			out[key] = "<redacted>"
+			continue
+		}
+		switch typed := value.(type) {
+		case map[string]any:
+			out[key] = redactSensitiveMap(typed)
+		case []any:
+			out[key] = redactSensitiveSlice(typed)
+		default:
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func redactSensitiveSlice(items []any) []any {
+	out := make([]any, 0, len(items))
+	for _, value := range items {
+		switch typed := value.(type) {
+		case map[string]any:
+			out = append(out, redactSensitiveMap(typed))
+		case []any:
+			out = append(out, redactSensitiveSlice(typed))
+		default:
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func isSensitiveKey(key string) bool {
+	value := strings.ToLower(strings.TrimSpace(key))
+	if value == "" {
+		return false
+	}
+	if strings.Contains(value, "password") || strings.Contains(value, "basicpass") || strings.Contains(value, "jwtsecret") {
+		return true
+	}
+	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "webhook") {
+		return true
+	}
+	if strings.Contains(value, "authorization") || strings.Contains(value, "dsn") || strings.Contains(value, "settingscryptokey") {
+		return true
+	}
+	return false
 }

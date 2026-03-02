@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import AlertsTab from '../components/AlertsTab';
+import AuthControls from '../components/AuthControls';
 import ChangesTab from '../components/ChangesTab';
 import IncidentsTab from '../components/IncidentsTab';
 import OverviewTab from '../components/OverviewTab';
@@ -12,6 +13,7 @@ type Tab = 'overview' | 'incidents' | 'alerts' | 'runbooks' | 'changes' | 'setti
 export default function Home() {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [tab, setTab] = useState<Tab>('overview');
+  const [authVersion, setAuthVersion] = useState(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -44,7 +46,10 @@ export default function Home() {
           <a className="brand" href="/">Runbook Hunter</a>
           <span className="hint">Console</span>
         </div>
-        <ThemeToggle theme={theme} onToggle={() => setTheme((v) => (v === 'dark' ? 'light' : 'dark'))} />
+        <div className="top-controls">
+          <AuthControls onAuthChanged={() => setAuthVersion((v) => v + 1)} />
+          <ThemeToggle theme={theme} onToggle={() => setTheme((v) => (v === 'dark' ? 'light' : 'dark'))} />
+        </div>
       </header>
 
       <section className="compact-banner">
@@ -67,12 +72,12 @@ export default function Home() {
         ))}
       </nav>
 
-      {tab === 'overview' && <OverviewTab />}
-      {tab === 'incidents' && <IncidentsTab />}
-      {tab === 'alerts' && <AlertsTab />}
-      {tab === 'runbooks' && <RunbooksTab />}
-      {tab === 'changes' && <ChangesTab />}
-      {tab === 'settings' && <SettingsTab />}
+      {tab === 'overview' && <OverviewTab key={`overview-${authVersion}`} />}
+      {tab === 'incidents' && <IncidentsTab key={`incidents-${authVersion}`} />}
+      {tab === 'alerts' && <AlertsTab key={`alerts-${authVersion}`} />}
+      {tab === 'runbooks' && <RunbooksTab key={`runbooks-${authVersion}`} />}
+      {tab === 'changes' && <ChangesTab key={`changes-${authVersion}`} />}
+      {tab === 'settings' && <SettingsTab key={`settings-${authVersion}`} />}
     </main>
   );
 }

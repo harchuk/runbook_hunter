@@ -2,10 +2,11 @@ const API_BASE_ENV = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/+$/, ''
 const AUTH_MODE_KEY = 'rh_auth_mode';
 const AUTH_BASIC_KEY = 'rh_auth_basic';
 const AUTH_JWT_KEY = 'rh_auth_jwt';
+const AUTH_DISABLED_KEY = 'rh_auth_disabled';
 const DEFAULT_BASIC_USER = process.env.NEXT_PUBLIC_DEFAULT_BASIC_USER || 'admin';
 const DEFAULT_BASIC_PASS = process.env.NEXT_PUBLIC_DEFAULT_BASIC_PASS || 'change-me';
 
-type AuthMode = 'basic' | 'jwt';
+export type AuthMode = 'basic' | 'jwt' | 'oidc';
 
 function buildURL(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;
@@ -21,11 +22,14 @@ function resolveApiBase(): string {
 }
 
 function getAuthHeader(): string | undefined {
+  if (typeof window !== 'undefined' && window.sessionStorage.getItem(AUTH_DISABLED_KEY) === '1') {
+    return undefined;
+  }
   const mode =
     (typeof window !== 'undefined'
       ? ((window.sessionStorage.getItem(AUTH_MODE_KEY) as AuthMode | null) || 'basic')
       : 'basic');
-  if (mode === 'jwt') {
+  if (mode === 'jwt' || mode === 'oidc') {
     const token = typeof window !== 'undefined' ? window.sessionStorage.getItem(AUTH_JWT_KEY) : '';
     if (!token) {
       return undefined;
@@ -72,6 +76,7 @@ export function setBasicAuth(user: string, pass: string) {
     return;
   }
   const encoded = encodeBase64(`${user}:${pass}`);
+  window.sessionStorage.removeItem(AUTH_DISABLED_KEY);
   window.sessionStorage.setItem(AUTH_MODE_KEY, 'basic');
   window.sessionStorage.setItem(AUTH_BASIC_KEY, encoded);
   window.sessionStorage.removeItem(AUTH_JWT_KEY);
@@ -81,7 +86,18 @@ export function setJWTAuth(token: string) {
   if (typeof window === 'undefined') {
     return;
   }
+  window.sessionStorage.removeItem(AUTH_DISABLED_KEY);
   window.sessionStorage.setItem(AUTH_MODE_KEY, 'jwt');
+  window.sessionStorage.setItem(AUTH_JWT_KEY, token.trim());
+  window.sessionStorage.removeItem(AUTH_BASIC_KEY);
+}
+
+export function setOIDCAuth(token: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.sessionStorage.removeItem(AUTH_DISABLED_KEY);
+  window.sessionStorage.setItem(AUTH_MODE_KEY, 'oidc');
   window.sessionStorage.setItem(AUTH_JWT_KEY, token.trim());
   window.sessionStorage.removeItem(AUTH_BASIC_KEY);
 }
@@ -90,9 +106,21 @@ export function clearAuth() {
   if (typeof window === 'undefined') {
     return;
   }
+  window.sessionStorage.setItem(AUTH_DISABLED_KEY, '1');
   window.sessionStorage.removeItem(AUTH_MODE_KEY);
   window.sessionStorage.removeItem(AUTH_BASIC_KEY);
   window.sessionStorage.removeItem(AUTH_JWT_KEY);
+}
+
+export function getStoredAuthMode(): AuthMode {
+  if (typeof window === 'undefined') {
+    return 'basic';
+  }
+  const mode = (window.sessionStorage.getItem(AUTH_MODE_KEY) as AuthMode | null) || 'basic';
+  if (mode === 'jwt' || mode === 'oidc' || mode === 'basic') {
+    return mode;
+  }
+  return 'basic';
 }
 
 function encodeBase64(value: string): string {
